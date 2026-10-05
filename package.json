@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@xog/agentic": "^0.1.2",
+    "@xog/creative": "^0.1.2"
+  }
+}
