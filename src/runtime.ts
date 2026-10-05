@@ -118,6 +118,23 @@ export class WallRuntime {
         if (!this.frames.has(panel)) controller.show(panel, true);
         return this.queueCapture(panel, true);
       }),
+      captureAllPages: () => action('captureAllPages', async () => {
+        const panels = [...controller.snapshot().visible];
+        const results: { id: string; route: string; image: string }[] = [];
+        for (const id of panels) {
+          // A user may uncheck a panel while an earlier page is capturing.
+          if (!controller.snapshot().visible.includes(id)) continue;
+          const image = await this.queueCapture(id, true);
+          if (controller.snapshot().visible.includes(id)) results.push({ id, route: controller.route(id).path, image });
+        }
+        return results;
+      }),
+      saveAllPages: outputDir => action('saveAllPages', async () => {
+        if (typeof outputDir !== 'string' || !outputDir.trim()) throw new Error('outputDir must be a nonempty directory path');
+        if (!this.prompts?.saveCaptures) throw new Error('No development capture persistence adapter configured');
+        const captures = await this.api.captureAllPages();
+        return this.prompts.saveCaptures(outputDir, captures);
+      }),
       styles: {
         list: () => action('styles.list', () => styles.list()),
         read: id => action('styles.read', () => styles.read(id)),

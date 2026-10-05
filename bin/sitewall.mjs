@@ -29,6 +29,7 @@ catch (error) {
 const files = {
   'page-styles.json': stylesManifest,
   'AGENTS.md': await readFile(fileURLToPath(new URL('../SITEWALL-AGENTS.md', import.meta.url)), 'utf8'),
+  'SITEWALL-API.md': await readFile(fileURLToPath(new URL('../SITEWALL-API.md', import.meta.url)), 'utf8'),
   'page-routes.json': JSON.stringify({ version: 1, routes: [] }, null, 2) + '\n',
   'SiteWallEntry.tsx': `import { SiteWall, installSiteWallBridge, createStylesheetClient, createPromptClient, type SharedStateAdapter, type RouteManifest } from 'react-site-wall';
 import 'react-site-wall/styles.css';

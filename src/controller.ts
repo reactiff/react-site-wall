@@ -85,7 +85,7 @@ export class WallController {
     if (patch.stylesWidth !== undefined && (!Number.isFinite(patch.stylesWidth) || patch.stylesWidth < 200 || patch.stylesWidth > 1200)) throw new Error('Styles panel width must be 200-1200 pixels');
     if (patch.autoCenter !== undefined && typeof patch.autoCenter !== 'boolean') throw new Error('Invalid auto-centering');
     if (patch.layout && !['overview', 'viewport'].includes(patch.layout)) throw new Error('Invalid layout');
-    if (patch.zoom !== undefined && (!Number.isFinite(patch.zoom) || patch.zoom < .1 || patch.zoom > 2)) throw new Error('Zoom must be between 0.1 and 2');
+    if (patch.zoom !== undefined && (!Number.isFinite(patch.zoom) || patch.zoom < .1 || patch.zoom > 3)) throw new Error('Zoom must be between 0.1 and 2');
     if (patch.columns !== undefined && (!Number.isInteger(patch.columns) || patch.columns < 1 || patch.columns > 20)) throw new Error('Columns must be 1–20');
     if (patch.viewport && [patch.viewport.width, patch.viewport.height].some(v => !Number.isInteger(v) || v < 200 || v > 4096)) throw new Error('Viewport dimensions must be 200–4096 CSS pixels');
     if (patch.pan && (!Number.isFinite(patch.pan.x) || !Number.isFinite(patch.pan.y))) throw new Error('Invalid pan');

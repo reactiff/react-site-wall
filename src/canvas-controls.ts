@@ -56,7 +56,7 @@ export function useCanvasControls(controller: WallController, runtime: WallRunti
       const rawNotches = mode === 1 ? delta / 3 : mode === 2 ? delta : delta / 100;
       const notches = Math.abs(rawNotches) >= .5 ? Math.sign(rawNotches) * Math.max(1, Math.round(Math.abs(rawNotches))) : rawNotches;
       anchor = origin; direction = delta < 0 ? 'zoom-in' : 'zoom-out';
-      targetZoom = Math.max(.1, Math.min(2, (zoomAnimation ? targetZoom : controller.snapshot().zoom) - notches * .01));
+      targetZoom = Math.max(.1, Math.min(3, (zoomAnimation ? targetZoom : controller.snapshot().zoom) - notches * .01));
       if (!zoomAnimation) zoomAnimation = requestAnimationFrame(animateZoom);
       cursors();
     };

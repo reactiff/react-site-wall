@@ -90,6 +90,9 @@ export interface SiteWallAPI {
   capture(id?: string): Promise<string[]>;
   /** Stitched PNG data URL for a panel id or manifest route path. */
   captureFullPage(route?: string): Promise<string>;
+  /** Stitched PNG for each currently visible panel; unchecked panels are excluded. */
+  captureAllPages(): Promise<PageCapture[]>;
+  saveAllPages(outputDir: string): Promise<SavedPageCapture[]>;
   styles: StylesheetAdapter;
 }
 declare global { interface Window { sitewall?: SiteWallAPI; sitewallReady?: Promise<unknown> | (() => unknown | Promise<unknown>) } }
@@ -109,7 +112,10 @@ export interface PromptContext {
   styles: import('./style-context.js').StyleContext;
 }
 export interface PromptResult { status: 'completed' | 'failed'; output: string; exitCode: number | null }
-export interface PromptAdapter {
+export interface PageCapture { id: string; route: string; image: string }
+export interface SavedPageCapture { id: string; route: string; path: string }
+export interface CapturePersistenceAdapter { saveCaptures(outputDir: string, captures: PageCapture[]): Promise<SavedPageCapture[]> }
+export interface PromptAdapter extends Partial<CapturePersistenceAdapter> {
   execute(instruction: string, context: PromptContext): Promise<PromptResult>;
   /** Connect an authenticated agent transport to this exact human session. */
   attach?(api: SiteWallAPI): () => void;

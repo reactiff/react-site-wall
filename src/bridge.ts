@@ -24,6 +24,34 @@ export function installSiteWallBridge(options: { enabled: boolean; sharedState?:
   const win = window as BridgeWindow;
   if (win[key]) return () => {};
   const stopObservingNetwork = observePageNetwork(win);
+  const scrollbarStyle = win.document.createElement('style');
+  scrollbarStyle.dataset.sitewallInternal = 'scrollbar';
+  // Target only the document scrollbar, leaving nested scroll containers alone.
+  scrollbarStyle.textContent = `
+    html,
+    body {
+      background: #000;
+    }
+    html:root::-webkit-scrollbar {
+      width: 6px;
+      background: transparent !important;
+    }
+
+    html:root::-webkit-scrollbar-track,
+    html:root::-webkit-scrollbar-track-piece,
+    html:root::-webkit-scrollbar-button,
+    html:root::-webkit-scrollbar-corner {
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+
+    html:root::-webkit-scrollbar-thumb {
+      background: #88888888;
+      border: 2px solid transparent;
+      background-clip: content-box;
+    }
+  `;
+  (win.document.head || win.document.documentElement).appendChild(scrollbarStyle);
   let applying = false;
   let disposed = false;
   const report = (type: string, detail: unknown) => {
@@ -125,6 +153,7 @@ export function installSiteWallBridge(options: { enabled: boolean; sharedState?:
       if (disposed) return;
       disposed = true;
       stopObservingNetwork();
+      scrollbarStyle.remove();
       unsubscribe?.();
       win.history.pushState = push; win.history.replaceState = replace;
       win.removeEventListener('popstate', navigation); win.removeEventListener('hashchange', navigation);

@@ -154,8 +154,8 @@
 }
 
 .sw-page {
-    border: 1px solid #00000088;
-    border-radius: 10px;
+    border: 2px solid #00000088;
+    border-radius: 0px;
     overflow: hidden;
     background: #00000088;
     box-shadow: 0 15px 40px #0005
@@ -187,29 +187,11 @@
 
 .sw-page-body {
     position: relative;
-    /* background: #fff */
+    background: #000
 }
 
 .sw-page iframe {
     border: 0;
-    /* background: white */
-}
-
-/* width */
-.sw-page iframe ::-webkit-scrollbar {
-   width: 20px;
-}
-/* Track */
-.sw-page iframe ::-webkit-scrollbar-track {
-   background: #f1f1f1;
-}
-/* Handle */
-.sw-page iframe ::-webkit-scrollbar-thumb {
-   background: #888;
-}
-/* Handle on hover */
-.sw-page iframe ::-webkit-scrollbar-thumb:hover {
-   background: #555;
 }
 
 .sw-focus-shield {

@@ -4,6 +4,8 @@ import { delimiter, isAbsolute, relative, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { spawn } from 'node:child_process';
+import { savePageCaptures } from './capture-persistence.js';
+import type { PageCapture } from './types.js';
 
 export interface StylesheetServerOptions {
   enabled: boolean;
@@ -128,14 +130,15 @@ export function createPromptMiddleware(options: PromptServerOptions) {
   const endpoint = options.endpoint ?? '/__sitewall/prompts';
   let sessionId = '';
   let seenAt = 0;
-  const methods = new Set(['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'styles.list', 'styles.read', 'styles.save']);
+  const methods = new Set(['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'captureAllPages', 'saveAllPages', 'styles.list', 'styles.read', 'styles.save']);
   type Job = { id: string; method: string; args: unknown[]; sessionId: string; finish: (status: number, data: unknown) => void; timer: ReturnType<typeof setTimeout> };
   const jobs = new Map<string, Job>();
   const pending: Job[] = [];
   let poll: { sessionId: string; deliver: (job: Job | null) => void } | undefined;
   return (req: IncomingMessage, res: ServerResponse, next: () => void = () => { res.writeHead(404); res.end(); }): void => {
     const sessionRequest = req.url?.split('?')[0] === '/__sitewall/session';
-    if (!sessionRequest && req.url?.split('?')[0] !== endpoint) return next();
+    const captureRequest = req.url?.split('?')[0] === '/__sitewall/captures';
+    if (!sessionRequest && !captureRequest && req.url?.split('?')[0] !== endpoint) return next();
     const respond = (status: number, data: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); };
     void (async () => {
       if (!options.enabled) return respond(404, { error: 'Disabled' });
@@ -143,6 +146,18 @@ export function createPromptMiddleware(options: PromptServerOptions) {
       if (typeof token !== 'string' || Buffer.byteLength(token) !== Buffer.byteLength(options.token) || !timingSafeEqual(Buffer.from(token), Buffer.from(options.token))) return respond(403, { error: 'Forbidden' });
       const origin = new URL(options.origin);
       if (req.headers.host !== origin.host || (req.headers.origin && req.headers.origin !== origin.origin) || req.headers['sec-fetch-site'] === 'cross-site') return respond(403, { error: 'Origin rejected' });
+      if (captureRequest) {
+        if (req.method !== 'POST') return respond(405, { error: 'Method not allowed' });
+        let size = 0; const chunks: Buffer[] = [];
+        for await (const chunk of req) {
+          const buffer = Buffer.from(chunk); size += buffer.length;
+          if (size > 64 * 1024 * 1024) return respond(413, { error: 'Capture persistence payload exceeds 64 MiB; no files written' });
+          chunks.push(buffer);
+        }
+        const data = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { outputDir: string; captures: PageCapture[] };
+        if (!Array.isArray(data.captures) || data.captures.some(item => !item || typeof item.id !== 'string' || typeof item.route !== 'string' || typeof item.image !== 'string')) return respond(400, { error: 'Expected captures with id, route and PNG image' });
+        return respond(200, { result: await savePageCaptures(data.outputDir, data.captures, options.root) });
+      }
       if (sessionRequest) {
         const url = new URL(req.url!, options.origin);
         if (req.method === 'GET') {
@@ -184,7 +199,7 @@ export function createPromptMiddleware(options: PromptServerOptions) {
         const job: Job = { id, method: data.method, args: data.args ?? [], sessionId, finish: respond, timer: setTimeout(() => {
           jobs.delete(id); const index = pending.findIndex(item => item.id === id); if (index >= 0) pending.splice(index, 1);
           respond(504, { error: 'SiteWall session command timed out; verification remains unresolved' });
-        }, data.method === 'capture' || data.method === 'captureFullPage' ? 180000 : 60000) };
+        }, (data.method === 'captureAllPages' || data.method === 'saveAllPages') ? 1800000 : data.method === 'capture' || data.method === 'captureFullPage' ? 180000 : 60000) };
         jobs.set(id, job);
         if (poll) poll.deliver(job); else pending.push(job);
         return;

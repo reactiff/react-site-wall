@@ -27,7 +27,9 @@ npm install /path/to/react-site-wall-0.1.0.tgz
 npx sitewall init
 ```
 
-Setup creates `sitewall/SiteWallEntry.tsx`, `sitewall/page-routes.json`, `sitewall/page-styles.json`, `sitewall/AGENTS.md`, a server example, and `sitewall/ROUTE-ANALYSIS.md`. Existing files are preserved; a conditional reference to SiteWall instructions is added to the host's root `AGENTS.md`. CSS discovery excludes dependencies, build output, and hidden directories. Review the discovered styles manifest. Have Codex follow the route analysis instructions; the route manifest starts empty rather than filled with guessed routes.
+Setup creates `sitewall/SiteWallEntry.tsx`, `sitewall/page-routes.json`, `sitewall/page-styles.json`, `sitewall/AGENTS.md`, `sitewall/SITEWALL-API.md`, a server example, and `sitewall/ROUTE-ANALYSIS.md`. Existing files are preserved; a conditional reference to SiteWall instructions is added to the host's root `AGENTS.md`. CSS discovery excludes dependencies, build output, and hidden directories. Review the discovered styles manifest. Have Codex follow the route analysis instructions; the route manifest starts empty rather than filled with guessed routes.
+
+Give agents the compact [SiteWall API reference](./SITEWALL-API.md) for methods, parameters, context results, and access to the shared human session. Setup copies it to the client project's `sitewall/SITEWALL-API.md`; rerun setup to add it to an existing installation without overwriting existing files.
 
 Mount the generated entry at `/sitewall` behind an explicit **development-only** flag. Call `connectSiteWall` before mounting ordinary application pages, including pages reached after a document reload. Enable TypeScript JSON imports (`resolveJsonModule`) or load the manifest with the host's own configuration mechanism. Import `react-site-wall/styles.css` separately.
 

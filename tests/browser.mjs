@@ -59,6 +59,11 @@ try {
   expect((await api('getState')).focused).toBe('shop');
   await api('configure', { viewport: { width: 820, height: 900 }, zoom: .3, pan: { x: 10, y: 10 }, columns: 3 });
   expect((await api('inspect', 'home')).viewport).toEqual({ width: 820, height: 900 });
+  expect(await page.locator('iframe[title="Home"]').evaluate(frame => ({
+    iframe: frame.offsetWidth,
+    body: frame.parentElement.clientWidth,
+    panel: frame.closest('.sw-page').clientWidth,
+  }))).toEqual({ iframe: 820, body: 820, panel: 820 });
   await api('navigate', '/story');
   await api('scroll', 0, 500);
   const images = await api('capture', 'story');
