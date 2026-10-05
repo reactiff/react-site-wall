@@ -141,7 +141,7 @@ const api = window.sitewall!;
 api.getState();
 api.show('model-one', true);
 await api.focus('model-one');
-api.configure({ viewport: { width: 390, height: 844 }, zoom: 0.6, columns: 2 });
+api.configure({ viewport: { width: 430, height: 932 }, zoom: 0.6, columns: 2 });
 await api.navigate('/shop?sort=price');
 await api.type('input[name="email"]', 'example@example.com');
 await api.click('button[type="submit"]');
@@ -164,6 +164,7 @@ api.configure({ autoCenter: false });
 api.zoomAt(.731, { x: 250, y: 180 }); // origin in canvas content coordinates
 api.filterStyles('theme');
 await api.inspectStyles('model-one', 'main h1');
+const fullPagePNG = await api.captureFullPage('/model-one'); // also accepts a panel id
 api.setSelectionMode('element'); // 'region' or 'none'
 await api.selectElement('main h1', 'model-one');
 await api.selectRegion({ x: 20, y: 100, width: 300, height: 240 }, 'model-one');
@@ -212,3 +213,17 @@ Tests cover ownership/manifest invariants, setup preservation, origin/token/path
 ## References
 
 Viewport controls and side-by-side inspection were informed by [Polypane](https://polypane.app/), [Sizzy](https://sizzy.co/), [Responsively App](https://responsively.app/), and its [source](https://github.com/responsively-org/responsively-app). Stable route ownership, moving focus, shared sessions, and source stylesheet editing follow [REQUIREMENTS.md](./REQUIREMENTS.md).
+
+### Selection performance and capture readiness
+
+Live panels default to the iPhone 14 Pro Safari viewport, 393 x 659 CSS pixels. Custom width/height edits apply on blur. The styles panel stays accessible for its selection controls; style inspection and editors remain idle until a selection is made. Explicit agent selector inspection remains supported. Selection inspection is coalesced and yields between restored CSSOM probes, with bounded caches invalidated by DOM, CSSOM, viewport, scroll, focus and interaction changes. Region targets reuse ancestor rankings; source parsing, file reads and editor state are reused, and offscreen editors mount lazily.
+
+`api.captureFullPage(route)` accepts a manifest route path or panel id and returns one PNG data URL. It scrolls the existing fixed viewport in viewport-height steps, crops the overlap in the final clamped viewport, stitches the slices, and restores scrolling. `capture()` continues to return cropped slices. Capture limits fail explicitly instead of returning incomplete images.
+
+Agent interactions and captures wait for document load, pending iframe fetch/XHR requests (including fetch response bodies), visible images, fonts and a quiet render window. Network observation is installed by the development bridge and restored on disposal. Hosts may provide `window.sitewallReady` as a readiness promise or function, or mark unfinished rendering with `aria-busy="true"` / `data-sitewall-loading="true"`. Unfinished requests or readiness time out after 30 seconds and remain unresolved; continuously streaming requests must finish or be handled through explicit host integration.
+
+### Workspace usability
+
+Wheel zoom advances by one percentage point per standard wheel notch, smoothly anchored to the pointer. Ctrl/Command + wheel zooms over a live page; ordinary wheel scrolling stays with that page. Background wheel zoom also works. Shift-drag pans across the wall and live panels; grab/grabbing and zoom-in/zoom-out cursors indicate the gesture. Camera previews paint once per animation frame and commit the shared state at gesture completion. Selection picking is transparent and uses the standard arrow.
+
+Workspace settings, route visibility/focus, camera, selection, filters, prompt UI/drafts, CSS drafts, histories, shared adapter state and per-panel scroll positions persist locally per wall path. Credentials are redacted; live host credentials are preserved during shared-state restoration. Opaque host component state remains under the host's own persistence. The styles panel has a draggable/keyboard-accessible left edge; its width also persists and is available as `configure({ stylesWidth })`. Editors format rule display without rewriting source merely on inspection, wrap long declarations, and grow to fit their content; the panel owns scrolling.

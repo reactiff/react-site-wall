@@ -128,7 +128,7 @@ export function createPromptMiddleware(options: PromptServerOptions) {
   const endpoint = options.endpoint ?? '/__sitewall/prompts';
   let sessionId = '';
   let seenAt = 0;
-  const methods = new Set(['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'inspect', 'click', 'type', 'scroll', 'capture', 'styles.list', 'styles.read', 'styles.save']);
+  const methods = new Set(['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'styles.list', 'styles.read', 'styles.save']);
   type Job = { id: string; method: string; args: unknown[]; sessionId: string; finish: (status: number, data: unknown) => void; timer: ReturnType<typeof setTimeout> };
   const jobs = new Map<string, Job>();
   const pending: Job[] = [];
@@ -167,7 +167,7 @@ export function createPromptMiddleware(options: PromptServerOptions) {
         }
         if (req.method !== 'POST' && req.method !== 'PUT') return respond(405, { error: 'Method not allowed' });
         let size = 0; const chunks: Buffer[] = [];
-        for await (const chunk of req) { const buffer = Buffer.from(chunk); size += buffer.length; if (size > 4 * 1024 * 1024) return respond(413, { error: 'Session payload too large' }); chunks.push(buffer); }
+        for await (const chunk of req) { const buffer = Buffer.from(chunk); size += buffer.length; if (size > (req.method === 'PUT' ? 64 : 4) * 1024 * 1024) return respond(413, { error: 'Session payload too large' }); chunks.push(buffer); }
         const data = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { sessionId?: string; method?: string; args?: unknown[]; id?: string; result?: unknown; error?: unknown };
         if (!sessionId || (data.sessionId && data.sessionId !== sessionId) || (!running && Date.now() - seenAt > 60000)) return respond(409, { error: 'SiteWall session is unavailable or differs' });
         if (req.method === 'PUT') {
@@ -184,7 +184,7 @@ export function createPromptMiddleware(options: PromptServerOptions) {
         const job: Job = { id, method: data.method, args: data.args ?? [], sessionId, finish: respond, timer: setTimeout(() => {
           jobs.delete(id); const index = pending.findIndex(item => item.id === id); if (index >= 0) pending.splice(index, 1);
           respond(504, { error: 'SiteWall session command timed out; verification remains unresolved' });
-        }, 30000) };
+        }, data.method === 'capture' || data.method === 'captureFullPage' ? 180000 : 60000) };
         jobs.set(id, job);
         if (poll) poll.deliver(job); else pending.push(job);
         return;

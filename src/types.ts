@@ -12,7 +12,7 @@ export interface RouteManifest { version: 1; routes: PageRoute[] }
 export interface StylesManifest { version: 1; styles: string[] }
 export interface Viewport { width: number; height: number; name?: string }
 export const devices: Viewport[] = [
-  { name: 'Phone', width: 390, height: 844 },
+  { name: 'iPhone 14 Pro (Safari)', width: 393, height: 659 },
   { name: 'Tablet', width: 820, height: 1180 },
   { name: 'Laptop', width: 1366, height: 768 },
   { name: 'Desktop', width: 1920, height: 1080 },
@@ -33,6 +33,7 @@ export interface WallState {
   columns: number;
   leftOpen: boolean;
   rightOpen: boolean;
+  stylesWidth: number;
 }
 export interface WallEvent {
   sequence: number;
@@ -71,7 +72,7 @@ export interface SiteWallAPI {
   show(id: string, visible: boolean): void;
   focus(id: string): Promise<void>;
   navigate(path: string): Promise<void>;
-  configure(patch: Partial<Pick<WallState, 'layout' | 'viewport' | 'zoom' | 'pan' | 'columns' | 'leftOpen' | 'rightOpen' | 'autoCenter'>>): void;
+  configure(patch: Partial<Pick<WallState, 'layout' | 'viewport' | 'zoom' | 'pan' | 'columns' | 'leftOpen' | 'rightOpen' | 'autoCenter' | 'stylesWidth'>>): void;
   zoomAt(zoom: number, origin: { x: number; y: number }): void;
   filterStyles(query: string): void;
   inspectStyles(id?: string, selector?: string): Promise<import('./style-context.js').StyleContext>;
@@ -87,9 +88,11 @@ export interface SiteWallAPI {
   type(selector: string, value: string): Promise<void>;
   scroll(x: number, y: number): Promise<void>;
   capture(id?: string): Promise<string[]>;
+  /** Stitched PNG data URL for a panel id or manifest route path. */
+  captureFullPage(route?: string): Promise<string>;
   styles: StylesheetAdapter;
 }
-declare global { interface Window { sitewall?: SiteWallAPI } }
+declare global { interface Window { sitewall?: SiteWallAPI; sitewallReady?: Promise<unknown> | (() => unknown | Promise<unknown>) } }
 export interface SelectionRectangle { x: number; y: number; width: number; height: number }
 export interface ContextSelection {
   kind: 'element' | 'region'; panelId: string; route: string;

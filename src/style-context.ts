@@ -1,11 +1,12 @@
 import { cssLanguage } from '@codemirror/lang-css';
-import { inspectRuntimeCascade } from './runtime-cascade.js';
+import { inspectRuntimeCascade, inspectRuntimeCascadeAsync } from './runtime-cascade.js';
 export interface StyleDeclaration { property: string; value: string; important: boolean; selector: string; specificity: [number, number, number]; stylesheet: string; order: number; layer: string | null; inherited: boolean; inline: boolean }
 export type StyleSource = { kind: 'known-declaration'; declaration: StyleDeclaration } | { kind: 'opaque-cross-origin'; stylesheets: string[]; knownCandidate?: StyleDeclaration; attribution: 'not-readable' } | { kind: 'browser' };
-export interface MatchedStyleRule { stylesheet: string; sourceIndex: number; selector: string; cssText: string; rank: number; inherited: boolean }
+export interface MatchedStyleRule { stylesheet: string; sourceIndex: number; sourceOccurrence?: number; selector: string; cssText: string; rank: number; inherited: boolean }
 export interface StyleContext { rules?: MatchedStyleRule[]; selector?: string; stylesheets: { id: string; href: string | null; order: number; accessible: boolean }[]; cascade: { property: string; computed: string; declarations: StyleDeclaration[]; source: StyleSource }[]; opaqueSources: { id: string; href: string | null; active: boolean; kind: 'opaque-source' }[]; unresolved: string[]; region?: { selector: string; cascade: StyleContext['cascade'] }[] }
 /** Computed values and native runtime rule precedence from the live DOM/CSSOM. */
 export const inspectStyleContext = inspectRuntimeCascade;
+export const inspectStyleContextAsync = inspectRuntimeCascadeAsync;
 
 /** Preserve external stylesheet URL semantics when its text is applied inline. */
 export function rebaseStylesheetURLs(content: string, baseURL: string): string {

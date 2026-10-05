@@ -1,7 +1,7 @@
 import { calculate } from 'specificity';
 import type { StyleContext, StyleDeclaration, StyleSource } from './style-context.js';
 
-type RuntimeRule = { style: CSSStyleDeclaration; selector: string; stylesheet: string; layer: string | null; order: number; sourceIndex: number; authoredSelector: string };
+type RuntimeRule = { style: CSSStyleDeclaration; selector: string; stylesheet: string; layer: string | null; order: number; sourceIndex: number; sourceOccurrence: number; authoredSelector: string };
 const probes = new WeakMap<Document, string>();
 const inheritedProperties = new Set(('color cursor direction visibility font font-family font-size font-style font-weight font-stretch font-variant line-height letter-spacing word-spacing text-align text-indent text-transform text-shadow white-space word-break overflow-wrap hyphens tab-size list-style list-style-type list-style-position list-style-image border-collapse border-spacing caption-side empty-cells quotes writing-mode text-orientation fill stroke stroke-width').split(' '));
 
@@ -18,6 +18,10 @@ function runtimeOrder(win: Window, target: Element, rules: RuntimeRule[], import
     css.registerProperty({ name: probe, syntax: '*', inherits: false, initialValue: 'sitewall-none' });
     probes.set(win.document, probe);
   }
+  rules = rules.filter(rule => {
+    if (rule.selector.includes(':scope') || rule.selector.includes('&')) return true;
+    try { return target.matches(rule.selector); } catch { return true; }
+  });
   const saved = new Map<CSSStyleDeclaration, { value: string; priority: string }>();
   const tokens = new Map<string, RuntimeRule>();
   try {
@@ -47,7 +51,7 @@ function runtimeOrder(win: Window, target: Element, rules: RuntimeRule[], import
 }
 
 /** Actual values remain authoritative even where the browser withholds CSS rules. */
-export function inspectRuntimeCascade(win: Window, selector?: string, ids: string[] = [], region?: { x: number; y: number; width: number; height: number }): StyleContext {
+function* inspectCascadeSteps(win: Window, selector?: string, ids: string[] = [], region?: { x: number; y: number; width: number; height: number }, orders = new Map<Element, { normal: RuntimeRule[]; important: RuntimeRule[] }>()): Generator<void, StyleContext, void> {
   const pageContext = !selector && !region;
   if (pageContext) selector = 'body';
   const result: StyleContext = { selector, stylesheets: [], cascade: [], unresolved: [], opaqueSources: [], rules: [] };
@@ -58,6 +62,8 @@ export function inspectRuntimeCascade(win: Window, selector?: string, ids: strin
   const rules: RuntimeRule[] = [];
   let order = 0;
   const sourceIndices = new Map<string, number>();
+  const occurrences = new Map<string, number>();
+  const occurrence = (id: string, selector: string) => { const key = `${id}:${selector}`; const value = occurrences.get(key) ?? 0; occurrences.set(key, value + 1); return value; };
   const nextIndex = (id: string) => { const index = sourceIndices.get(id) ?? 0; sourceIndices.set(id, index + 1); return index; };
   const opaque = (id: string, href: string | null, active: boolean) => {
     if (!result.opaqueSources.some(source => source.id === id)) result.opaqueSources.push({ id, href, active, kind: 'opaque-source' });
@@ -67,10 +73,10 @@ export function inspectRuntimeCascade(win: Window, selector?: string, ids: strin
       if (rule.type === 1) {
         const style = rule as CSSStyleRule;
         const text = parent ? style.selectorText.replaceAll('&', `:is(${parent})`) : style.selectorText;
-        rules.push({ style: style.style, selector: text, stylesheet, layer, order: order++, sourceIndex: nextIndex(stylesheet), authoredSelector: style.selectorText });
+        rules.push({ style: style.style, selector: text, stylesheet, layer, order: order++, sourceIndex: nextIndex(stylesheet), sourceOccurrence: occurrence(stylesheet, style.selectorText), authoredSelector: style.selectorText });
         if (style.cssRules?.length) walk(style.cssRules, stylesheet, layer, text);
       } else if (rule.constructor.name === 'CSSNestedDeclarations') {
-        rules.push({ style: (rule as CSSRule & { style: CSSStyleDeclaration }).style, selector: parent ?? ':scope', stylesheet, layer, order: order++, sourceIndex: -1, authoredSelector: parent ?? ':scope' });
+        rules.push({ style: (rule as CSSRule & { style: CSSStyleDeclaration }).style, selector: parent ?? ':scope', stylesheet, layer, order: order++, sourceIndex: -1, sourceOccurrence: 0, authoredSelector: parent ?? ':scope' });
       } else if (rule.type === 3) {
         const imported = rule as CSSImportRule;
         if (imported.media.mediaText && !win.matchMedia(imported.media.mediaText).matches) continue;
@@ -86,6 +92,7 @@ export function inspectRuntimeCascade(win: Window, selector?: string, ids: strin
   const sheets = [...new Set([...win.document.styleSheets, ...win.document.adoptedStyleSheets])];
   for (const [index, sheet] of sheets.entries()) {
     const owner = sheet.ownerNode as Element | null;
+    if (owner?.hasAttribute('data-sitewall-internal')) continue;
     const source = owner?.getAttribute('data-sitewall-file') ?? owner?.getAttribute('data-vite-dev-id') ?? sheet.href ?? `inline-${index}`;
     let matches = ids.filter(id => source === id || source.split('?')[0].replaceAll('\\', '/').endsWith('/' + id.replaceAll('\\', '/')));
     if (!matches.length) matches = ids.filter(id => id.replaceAll('\\', '/').split('/').pop() === source.split('?')[0].replaceAll('\\', '/').split('/').pop());
@@ -95,6 +102,7 @@ export function inspectRuntimeCascade(win: Window, selector?: string, ids: strin
     try { const cssRules = sheet.cssRules; if (active) walk(cssRules, id); }
     catch { accessible = false; opaque(id, sheet.href, active); }
     result.stylesheets.push({ id, href: sheet.href, order: index, accessible });
+    yield;
   }
   if (region) {
     result.region = [];
@@ -103,7 +111,7 @@ export function inspectRuntimeCascade(win: Window, selector?: string, ids: strin
       if (!rect.width || !rect.height || x >= region.x + region.width || x + rect.width <= region.x || y >= region.y + region.height || y + rect.height <= region.y) continue;
       const path: string[] = []; let node: Element | null = el;
       while (node) { const parent: Element | null = node.parentElement; path.unshift(`${node.localName}:nth-child(${parent ? [...parent.children].indexOf(node) + 1 : 1})`); node = parent; }
-      const context = inspectRuntimeCascade(win, path.join(' > '), ids);
+      const context = yield* inspectCascadeSteps(win, path.join(' > '), ids, undefined, orders);
       for (const rule of context.rules ?? []) if (!result.rules!.some(existing => existing.stylesheet === rule.stylesheet && existing.sourceIndex === rule.sourceIndex)) result.rules!.push(rule);
       result.region.push({ selector: path.join(' > '), cascade: context.cascade });
       if (result.region.length >= 30) { result.unresolved.push('Region style inspection is bounded to 30 intersecting elements.'); break; }
@@ -122,8 +130,9 @@ export function inspectRuntimeCascade(win: Window, selector?: string, ids: strin
   const ranks = new Map<StyleDeclaration, { depth: number; normal: number; important: number }>();
   let ancestor: Element | null = target, depth = 0;
   while (ancestor) {
-    const normal = runtimeOrder(win, ancestor, rules, false);
-    const important = runtimeOrder(win, ancestor, normal, true);
+    let order = orders.get(ancestor);
+    if (!order) { const normal = runtimeOrder(win, ancestor, rules, false); order = { normal, important: runtimeOrder(win, ancestor, normal, true) }; orders.set(ancestor, order); }
+    const { normal, important } = order;
     const add = (style: CSSStyleDeclaration, info: Omit<StyleDeclaration, 'property' | 'value' | 'important' | 'inherited'>, normalRank: number, importantRank: number) => {
       const properties = new Set([...style, ...values.keys()].filter(property => property !== probes.get(win.document) && style.getPropertyValue(property)));
       for (const property of properties) {
@@ -133,13 +142,14 @@ export function inspectRuntimeCascade(win: Window, selector?: string, ids: strin
       }
     };
     for (const [index, item] of normal.entries()) {
-      if ((depth === 0 || [...item.style].some(property => property.startsWith('--') || inheritedProperties.has(property))) && item.sourceIndex >= 0 && !result.rules!.some(rule => rule.stylesheet === item.stylesheet && rule.sourceIndex === item.sourceIndex)) result.rules!.push({ stylesheet: item.stylesheet, sourceIndex: item.sourceIndex, selector: item.authoredSelector, cssText: `${item.authoredSelector} { ${item.style.cssText} }`, rank: index, inherited: depth > 0 });
+      if ((depth === 0 || [...item.style].some(property => property.startsWith('--') || inheritedProperties.has(property))) && item.sourceIndex >= 0 && !result.rules!.some(rule => rule.stylesheet === item.stylesheet && rule.sourceIndex === item.sourceIndex)) result.rules!.push({ stylesheet: item.stylesheet, sourceIndex: item.sourceIndex, sourceOccurrence: item.sourceOccurrence, selector: item.authoredSelector, cssText: `${item.authoredSelector} { ${item.style.cssText} }`, rank: index, inherited: depth > 0 });
       let specificity: [number, number, number] = [0, 0, 0];
       try { const score = calculate(item.selector); specificity = [score.A, score.B, score.C]; } catch { /* Runtime ranking handles selector lists, nesting and :scope directly. */ }
       add(item.style, { selector: item.selector, specificity, stylesheet: item.stylesheet, order: item.order, layer: item.layer, inline: false }, index, important.indexOf(item));
     }
     if ('style' in ancestor) add((ancestor as HTMLElement).style, { selector: '[inline style]', specificity: [0, 0, 0], stylesheet: 'inline attribute', order: Number.MAX_SAFE_INTEGER, layer: null, inline: true }, -1, -1);
     ancestor = ancestor.parentElement; depth++;
+    yield;
   }
   const compare = (a: StyleDeclaration, b: StyleDeclaration) => {
     const ar = ranks.get(a)!, br = ranks.get(b)!;
@@ -180,7 +190,62 @@ export function inspectRuntimeCascade(win: Window, selector?: string, ids: strin
       if (signs?.size === 1) return [...signs][0];
       const score = (rule: RuntimeRule) => { try { const value = calculate(rule.selector); return value.A * 1000000 + value.B * 1000 + value.C; } catch { return 0; } };
       return score(b) - score(a) || b.order - a.order;
-    }).map((rule, rank) => ({ stylesheet: rule.stylesheet, sourceIndex: rule.sourceIndex, selector: rule.authoredSelector, cssText: `${rule.authoredSelector} { ${rule.style.cssText} }`, rank, inherited: false }));
+    }).map((rule, rank) => ({ stylesheet: rule.stylesheet, sourceIndex: rule.sourceIndex, sourceOccurrence: rule.sourceOccurrence, selector: rule.authoredSelector, cssText: `${rule.authoredSelector} { ${rule.style.cssText} }`, rank, inherited: false }));
   }
   return result;
+}
+
+/** Synchronous compatibility entry point for consumers inspecting CSSOM directly. */
+export function inspectRuntimeCascade(win: Window, selector?: string, ids: string[] = [], region?: { x: number; y: number; width: number; height: number }): StyleContext {
+  const steps = inspectCascadeSteps(win, selector, ids, region);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+type InspectionCache = { generation: number; observer: MutationObserver; entries: Map<string, { stamp: string; result: StyleContext }> };
+const inspectionCaches = new WeakMap<Document, InspectionCache>();
+function inspectionCache(doc: Document): InspectionCache {
+  let cache = inspectionCaches.get(doc);
+  if (!cache) {
+    cache = { generation: 0, observer: new MutationObserver(() => { cache!.generation++; cache!.entries.clear(); }), entries: new Map() };
+    cache.observer.observe(doc, { subtree: true, childList: true, attributes: true, characterData: true });
+    for (const event of ['pointerover', 'pointerout', 'focusin', 'focusout', 'input', 'change', 'scroll']) doc.addEventListener(event, () => { cache!.generation++; cache!.entries.clear(); }, true);
+    inspectionCaches.set(doc, cache);
+  }
+  if (cache.observer.takeRecords().length) { cache.generation++; cache.entries.clear(); }
+  return cache;
+}
+function cssStamp(win: Window): string {
+  const visited = new Set<CSSStyleSheet>();
+  const sheetText = (sheet: CSSStyleSheet): string => {
+    if (visited.has(sheet)) return '';
+    visited.add(sheet);
+    try { return `${sheet.disabled}:${sheet.media.mediaText}:` + [...sheet.cssRules].map(rule => rule.cssText + (rule.type === 3 && (rule as CSSImportRule).styleSheet ? sheetText((rule as CSSImportRule).styleSheet!) : '')).join(''); }
+    catch { return `opaque:${sheet.href}:${sheet.disabled}:${sheet.media.mediaText}`; }
+  };
+  return [...win.document.styleSheets, ...win.document.adoptedStyleSheets].filter(sheet => !(sheet.ownerNode as Element | null)?.hasAttribute('data-sitewall-internal')).map(sheetText).join('|');
+}
+/** Yield only after native probes have been restored, never with modified CSSOM. */
+export async function inspectRuntimeCascadeAsync(win: Window, selector?: string, ids: string[] = [], region?: { x: number; y: number; width: number; height: number }): Promise<StyleContext> {
+  const cache = inspectionCache(win.document);
+  const key = JSON.stringify([selector, ids, region]);
+  const stamp = `${cache.generation}:${win.innerWidth}:${win.innerHeight}:${win.scrollX}:${win.scrollY}:${cssStamp(win)}`;
+  const cached = cache.entries.get(key);
+  if (cached?.stamp === stamp && !win.document.getAnimations().length) return structuredClone(cached.result);
+  const generation = cache.generation;
+  const steps = inspectCascadeSteps(win, selector, ids, region);
+  let started = performance.now();
+  let step = steps.next();
+  while (!step.done) {
+    if (performance.now() - started >= 6) {
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      started = performance.now();
+    }
+    step = steps.next();
+  }
+  if (inspectionCache(win.document).generation === generation && !win.document.getAnimations().length) {
+    if (cache.entries.size >= 8) cache.entries.delete(cache.entries.keys().next().value!);
+    cache.entries.set(key, { stamp, result: structuredClone(step.value) });
+  }
+  return step.value;
 }

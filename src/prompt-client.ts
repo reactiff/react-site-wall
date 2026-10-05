@@ -14,7 +14,7 @@ export function createPromptClient(options: { token: string; endpoint?: string; 
       const parts = method.split('.');
       const target = parts.length === 2 && parts[0] === 'styles' ? api.styles : api;
       const name = parts.length === 2 ? parts[1] : parts[0];
-      const allowed = ['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'inspect', 'click', 'type', 'scroll', 'capture', 'styles.list', 'styles.read', 'styles.save'];
+      const allowed = ['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'styles.list', 'styles.read', 'styles.save'];
       if (!allowed.includes(method)) throw new Error('Unsupported session command');
       const fn = (target as unknown as Record<string, (...args: unknown[]) => unknown>)[name];
       return fn(...args);

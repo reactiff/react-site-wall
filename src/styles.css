@@ -2,8 +2,8 @@
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: #0b1019;
-    color: #dce4f1;
+    background: #181818;
+    color: #d4d4d4;
     font: 14px/1.5 system-ui, sans-serif;
     display: flex;
     flex-direction: column;
@@ -20,8 +20,8 @@
 .sw-root textarea {
     font: inherit;
     color: inherit;
-    background: #151f30;
-    border: 1px solid #34445d;
+    background: #252526;
+    border: 1px solid #414141;
     border-radius: 6px;
     padding: 7px 9px
 }
@@ -31,7 +31,7 @@
 }
 
 .sw-root button:hover {
-    background: #22334b
+    background: #333333
 }
 
 .sw-root button:focus-visible,
@@ -52,7 +52,7 @@
     align-items: center;
     gap: 14px;
     padding: 12px 16px;
-    border-bottom: 1px solid #29354a
+    border-bottom: 1px solid #3c3c3c
 }
 
 .sw-toolbar strong {
@@ -83,14 +83,14 @@
     flex: none;
     padding: 16px;
     overflow: auto;
-    background: #101827;
-    border-right: 1px solid #29354a
+    background: #1e1e1e;
+    border-right: 1px solid #3c3c3c
 }
 
 .sw-styles {
     width: 320px;
     border-right: 0;
-    border-left: 1px solid #29354a;
+    border-left: 1px solid #3c3c3c;
     display: flex;
     flex-direction: column;
     gap: 10px
@@ -100,7 +100,7 @@
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: .1em;
-    color: #a2b2cb;
+    color: #b0b0b0;
     margin: 18px 0 12px
 }
 
@@ -139,9 +139,9 @@
     flex: 1;
     overflow: hidden;
     min-width: 0;
-    background-color: #0b1019;
-    background-image: radial-gradient(#26344b 1px, transparent 1px);
-    background-size: 20px 20px;
+    background-color: #181818;
+    background-image: radial-gradient(#343434 1px, transparent 1px);
+    background-size: 10px 10px;
     touch-action: none
 }
 
@@ -154,16 +154,16 @@
 }
 
 .sw-page {
-    border: 2px solid #334159;
+    border: 1px solid #00000088;
     border-radius: 10px;
     overflow: hidden;
-    background: #182235;
+    background: #00000088;
     box-shadow: 0 15px 40px #0005
 }
 
 .sw-focused {
     border-color: #73e2c4;
-    box-shadow: 0 0 3px 3px #73e2c430, 0 15px 40px #0005
+    box-shadow: 0 0 103px 3px #73e2c430, 0 15px 40px #0005
 }
 
 .sw-page>header {
@@ -182,17 +182,34 @@
 }
 
 .sw-page small {
-    color: #9cadc6
+    color: #b0b0b0
 }
 
 .sw-page-body {
     position: relative;
-    background: #fff
+    /* background: #fff */
 }
 
 .sw-page iframe {
     border: 0;
-    background: white
+    /* background: white */
+}
+
+/* width */
+.sw-page iframe ::-webkit-scrollbar {
+   width: 20px;
+}
+/* Track */
+.sw-page iframe ::-webkit-scrollbar-track {
+   background: #f1f1f1;
+}
+/* Handle */
+.sw-page iframe ::-webkit-scrollbar-thumb {
+   background: #888;
+}
+/* Handle on hover */
+.sw-page iframe ::-webkit-scrollbar-thumb:hover {
+   background: #555;
 }
 
 .sw-focus-shield {
@@ -202,18 +219,18 @@
     height: 100%;
     border: 0 !important;
     border-radius: 0 !important;
-    background: #10182720 !important;
+    background: #1e1e1e20 !important;
     display: flex;
     align-items: flex-start;
     justify-content: center;
     padding-top: 24px !important;
     margin-top: 0;
-    background: #00000088 !important;
+    /* background: #00000088 !important; */
 
 }
 
 .sw-focus-shield span {
-    background: #101827e8;
+    background: #1e1e1ee8;
     padding: 8px 14px;
     border-radius: 20px;
     opacity: 0
@@ -268,7 +285,7 @@
 
 .sw-route small {
     font-size: 11px;
-    color: #91a3be
+    color: #ababab
 }
 
 .sw-editor {
@@ -283,15 +300,15 @@
 .sw-status,
 .sw-hint {
     font-size: 12px;
-    color: #a2b2cb;
+    color: #b0b0b0;
     overflow-wrap: anywhere
 }
 
 .sw-footer {
     padding: 7px 16px;
-    border-top: 1px solid #29354a;
+    border-top: 1px solid #3c3c3c;
     font-size: 12px;
-    color: #91a3be
+    color: #ababab
 }
 
 .sw-error {
@@ -328,8 +345,8 @@
 .sw-blocked {
     position: absolute;
     inset: 0;
-    background: #182235;
-    color: #dce4f1;
+    background: #252526;
+    color: #d4d4d4;
     padding: 30px;
     display: flex;
     flex-direction: column;
@@ -342,29 +359,45 @@
 
 .sw-controls .sw-checkbox { flex-direction: row; align-items: center }
 .sw-context-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3 }
-.sw-context-overlay.sw-picking { pointer-events: auto; cursor: crosshair; background: #73e2c408; touch-action: none }
+.sw-context-overlay.sw-picking { pointer-events: auto; cursor: default; background: transparent; touch-action: none }
 .sw-selection-box { position: absolute; border: 2px solid #36d9ad; background: #36d9ad20; pointer-events: none; box-shadow: 0 0 0 1px #071c16 }
 .sw-selection-box span { position: absolute; top: 0; left: 0; background: #14392f; color: #fff; font: 12px/1.5 system-ui; padding: 2px 5px; white-space: nowrap }
-.sw-prompt { border-top: 1px solid #34445d; background: #101827; padding: 12px 16px; max-height: 35vh; overflow: auto }
+.sw-prompt { border-top: 1px solid #414141; background: #1e1e1e; padding: 12px 16px; max-height: 35vh; overflow: auto }
 .sw-prompt form { display: flex; gap: 12px }
 .sw-prompt textarea { flex: 1; min-height: 70px; resize: vertical }
 .sw-prompt pre { white-space: pre-wrap; max-height: 140px; overflow: auto }
 .sw-style-file { margin-bottom: 16px; min-width: 0 }
 .sw-styles > [hidden] { display: none }
 .sw-style-file h3 { font-size: 12px; overflow-wrap: anywhere; margin: 12px 0 6px; }
-.sw-code-editor { margin-top: 8px; border: 1px solid #34445d; border-radius: 6px; overflow: hidden; }
-.sw-code-editor .cm-editor { max-height: 500px; }
+.sw-code-editor { margin-top: 8px; border: 1px solid #414141; border-radius: 6px; overflow: hidden; }
+.sw-code-editor .cm-editor { max-height: none; }
 .sw-styles details { overflow-wrap: anywhere; }
 .sw-styles input { width: 100%; }
 
 .sw-styles { padding: 0; gap: 0; }
 .sw-styles > input { padding: 2px 5px; border-radius: 0; margin: 0; position: sticky; top: 0; z-index: 2; }
-.sw-style-rule { position: relative; margin: 0; padding: 0; border-bottom: 1px solid #34445d; min-width: 0; }
-.sw-rule-filename { text-align: right; font: 11px/1.3 system-ui; color: #91a3be; overflow-wrap: anywhere; }
+.sw-style-rule { position: relative; margin: 0; padding: 0; border-bottom: 1px solid #414141; min-width: 0; }
+.sw-rule-filename { text-align: right; font: 11px/1.3 system-ui; color: #ababab; overflow-wrap: anywhere; }
 .sw-style-rule .sw-code-editor { margin: 0 4px; padding: 0; border: 0; border-radius: 0; }
-.sw-rule-status { font-size: 11px; color: #91a3be; margin: 0; padding: 0; }
+.sw-rule-status { font-size: 11px; color: #ababab; margin: 0; padding: 0; }
 
-.sw-selection-toolbar { display: flex; height: 26px; min-height: 26px; position: sticky; top: 0; z-index: 3; background: #151f30; border-bottom: 1px solid #34445d; }
+.sw-selection-toolbar { display: flex; height: 26px; min-height: 26px; position: sticky; top: 0; z-index: 3; background: #252526; border-bottom: 1px solid #414141; }
 .sw-selection-toolbar button { flex: 1; font-size: 11px; padding: 2px 5px; margin: 0; border: 0; border-radius: 0; white-space: nowrap; }
 .sw-selection-toolbar button[aria-pressed="true"] { background: #244f47; color: #73e2c4; }
 .sw-styles > input { top: 26px; }
+
+.sw-rule-placeholder { min-height: 48px; font: 12px/1.4 monospace; color: #ababab; }
+
+.sw-wall { will-change: transform; }
+.sw-pan-surface { display: none; position: absolute; inset: 0; z-index: 10; background: transparent; touch-action: none; }
+.sw-shift-pan .sw-pan-surface { display: block; }
+.sw-camera-cursor, .sw-camera-cursor * { cursor: var(--sw-camera-cursor) !important; }
+.sw-styles-resizer { width: 5px; flex: none; background: #333; cursor: col-resize; touch-action: none; }
+.sw-styles-resizer:hover { background: #666; }
+.sw-styles { min-width: 0; overflow-x: hidden; overflow-y: auto; }
+.sw-styles > * { flex-shrink: 0; min-width: 0; }
+.sw-code-editor, .sw-code-editor .cm-editor, .sw-code-editor .cm-scroller { width: 100%; max-width: 100%; height: auto; max-height: none; overflow: visible; }
+.sw-code-editor .cm-content { overflow-wrap: anywhere; }
+
+.sw-selecting .sw-focus-shield { background: transparent !important; }
+.sw-selecting .sw-focus-shield span { display: none; }

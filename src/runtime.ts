@@ -1,15 +1,18 @@
+import { readPersistent, writePersistent } from './persistence.js';
 import { getPageBridge, type PageBridge } from './bridge.js';
-import { capturePage } from './capture.js';
+import { capturePage, stitchPageSlices } from './capture.js';
+import { waitForPageReady } from './page-ready.js';
 import { WallController } from './controller.js';
 import type { ContextSelection, PromptAdapter, PromptContext, SelectionRectangle, SiteWallAPI, StylesheetAdapter, WallEvent } from './types.js';
 import { captureSelection, sanitizeContext } from './selection.js';
-import { inspectStyleContext, applyStylesheet, restoreStylesheets } from './style-context.js';
+import { inspectStyleContextAsync, applyStylesheet, restoreStylesheets } from './style-context.js';
 
 export class WallRuntime {
   readonly frames = new Map<string, HTMLIFrameElement>();
   canvas?: HTMLElement;
   private shared: unknown;
   private hasShared = false;
+  private restoringSavedShared = false;
   private closed = false;
   private navigationQueue = Promise.resolve();
   private restoring = new Set<string>();
@@ -19,8 +22,11 @@ export class WallRuntime {
   private captureAbort = new AbortController();
   private overlays = new Map<string, string>();
   private contextHistory: WallEvent[] = [];
+  private scrollPositions: Record<string, { x: number; y: number }> = {};
   readonly api: SiteWallAPI;
   constructor(readonly controller: WallController, styles: StylesheetAdapter, private customCapture?: (win: Window, signal: AbortSignal) => Promise<string[]>, private prompts?: PromptAdapter) {
+    const saved = readPersistent<{ hasShared?: boolean; shared?: unknown; history?: WallEvent[]; scrolls?: Record<string, { x: number; y: number }> }>(controller.wallPath, 'session');
+    if (saved) { this.hasShared = saved.hasShared === true; this.restoringSavedShared = this.hasShared; this.shared = saved.shared; this.contextHistory = Array.isArray(saved.history) ? saved.history.slice(-300) : []; this.scrollPositions = saved.scrolls ?? {}; }
     const action = async <T>(name: string, fn: () => T | Promise<T>): Promise<T> => {
       try { const result = await fn(); controller.emit('action', { name, success: true }); return result; }
       catch (error) { controller.emit('error', { action: name, message: String(error) }); throw error; }
@@ -34,6 +40,7 @@ export class WallRuntime {
         this.restoring.delete(id);
         this.blocked.delete(id);
         controller.focus(id);
+        await new Promise<void>(resolve => requestAnimationFrame(() => { const frame = this.frames.get(id); frame?.focus({ preventScroll: true }); frame?.contentWindow?.focus(); resolve(); }));
         const bridge = await this.ready(id);
         const redirect = controller.route(id).metadata?.redirectTo;
         if (typeof redirect === 'string') { await this.api.navigate(redirect); return; }
@@ -51,12 +58,15 @@ export class WallRuntime {
       },
       filterStyles: query => { if (typeof query !== 'string') throw new Error('Invalid styles filter'); controller.update({ styleFilter: query }); },
       inspectStyles: (id, selector) => action('inspectStyles', async () => {
-        const panelId = id ?? controller.snapshot().selection?.panelId ?? this.focused();
+        const currentSelection = controller.snapshot().selection;
+        if (!selector && (!currentSelection || (id && currentSelection.panelId !== id))) return { stylesheets: [], cascade: [], unresolved: [], opaqueSources: [], rules: [] };
+        const panelId = id ?? currentSelection?.panelId ?? this.focused();
         await this.ready(panelId);
         const win = this.frames.get(panelId)!.contentWindow!;
         const selection = controller.snapshot().selection;
         const selected = selection?.panelId === panelId ? selection : null;
-        return inspectStyleContext(win, selector ?? selected?.element?.selector, await styles.list(), selected?.kind === 'region' ? selected.rectangle : undefined);
+        if (!selector && !selected) return { stylesheets: [], cascade: [], unresolved: [], opaqueSources: [], rules: [] };
+        return inspectStyleContextAsync(win, selector ?? selected?.element?.selector, await styles.list(), !selector && selected?.kind === 'region' ? selected.rectangle : undefined);
       }),
       setSelectionMode: mode => {
         if (!['none', 'element', 'region'].includes(mode)) throw new Error('Invalid selection mode');
@@ -101,18 +111,12 @@ export class WallRuntime {
         (await this.active()).scroll(x, y);
         controller.emit('scroll', { id: this.focused(), x, y });
       }),
-      capture: id => action('capture', () => {
-        const panel = id ?? this.focused();
-        const work = this.captureQueue.then(async () => {
-          await this.ready(panel);
-          if (this.blocked.has(panel)) throw new Error(`Cannot capture redirected panel ${panel}`);
-          const win = this.frames.get(panel)!.contentWindow!;
-          const images = await (this.customCapture ?? capturePage)(win, this.captureAbort.signal);
-          controller.emit('capture', { id: panel, slices: images.length });
-          return images;
-        });
-        this.captureQueue = work.catch(() => {});
-        return work;
+      capture: id => action('capture', () => this.queueCapture(id ?? this.focused(), false)),
+      captureFullPage: route => action('captureFullPage', async () => {
+        const panel = route ? controller.snapshot().routes.find(page => page.id === route || page.path === route)?.id : this.focused();
+        if (!panel) throw new Error(`Route is absent from page-routes.json: ${route}`);
+        if (!this.frames.has(panel)) controller.show(panel, true);
+        return this.queueCapture(panel, true);
       }),
       styles: {
         list: () => action('styles.list', () => styles.list()),
@@ -126,6 +130,25 @@ export class WallRuntime {
         }),
       },
     };
+  }
+  private persistSession(): void {
+    writePersistent(this.controller.wallPath, 'session', () => ({ hasShared: this.hasShared, shared: this.shared, history: this.contextHistory, scrolls: this.scrollPositions }));
+  }
+  private queueCapture(panel: string, full: true): Promise<string>;
+  private queueCapture(panel: string, full: false): Promise<string[]>;
+  private queueCapture(panel: string, full: boolean): Promise<string | string[]> {
+    const work = this.captureQueue.then(async () => {
+      await this.navigationQueue;
+      await this.ready(panel);
+      if (this.blocked.has(panel)) throw new Error(`Cannot capture redirected panel ${panel}`);
+      const win = this.frames.get(panel)!.contentWindow!;
+      const images = await (this.customCapture ?? capturePage)(win, this.captureAbort.signal);
+      const result = full ? await stitchPageSlices(win, images, this.captureAbort.signal) : images;
+      this.controller.emit('capture', { id: panel, slices: images.length, full });
+      return result;
+    });
+    this.captureQueue = work.catch(() => {});
+    return work;
   }
   private select(panelId: string, target: Element | SelectionRectangle): ContextSelection {
     const win = this.frames.get(panelId)!.contentWindow!;
@@ -160,14 +183,18 @@ export class WallRuntime {
     if (this.blocked.has(id) || (bridge.location() !== assigned && bridge.location().split('#')[0] !== assigned)) throw new Error(`Panel ${id} has redirected and cannot be interacted with as ${assigned}`);
     return bridge;
   }
-  async ready(id: string): Promise<PageBridge> {
+  async ready(id: string, settle = true): Promise<PageBridge> {
     this.controller.route(id);
-    const deadline = Date.now() + 10000;
+    const deadline = Date.now() + 30000;
     let error: unknown;
     while (!this.closed && Date.now() < deadline) {
       try {
         const win = this.frames.get(id)?.contentWindow;
-        if (win && win.document.readyState !== 'loading' && win.location.pathname !== 'blank') return getPageBridge(win);
+        if (win && win.document.readyState === 'complete' && win.location.href !== 'about:blank') {
+          const bridge = getPageBridge(win);
+          if (settle) await waitForPageReady(win, this.captureAbort.signal);
+          return bridge;
+        }
       } catch (failure) { error = failure; }
       await new Promise(resolve => setTimeout(resolve, 25));
     }
@@ -184,14 +211,21 @@ export class WallRuntime {
   }
   async loaded(id: string) {
     try {
-      const bridge = await this.ready(id);
+      // Hydrate the existing shared store before waiting for data dependent on it.
+      const bridge = await this.ready(id, false);
       if (this.closed) return;
       this.applyStyles(this.frames.get(id)!);
       if (bridge.shared) {
-        if (this.hasShared) await bridge.shared.apply(structuredClone(this.shared));
+        if (this.hasShared) {
+          if (this.restoringSavedShared) { this.shared = restoreSavedShared(bridge.shared.read(), this.shared); this.restoringSavedShared = false; }
+          await bridge.shared.apply(structuredClone(this.shared));
+        }
         else { this.shared = structuredClone(bridge.shared.read()); this.hasShared = true; }
       }
+      this.persistSession();
       this.controller.emit('ready', { id, sharedState: !!bridge.shared });
+      const scroll = this.scrollPositions[id];
+      if (scroll && Number.isFinite(scroll.x) && Number.isFinite(scroll.y)) { void waitForPageReady(this.frames.get(id)!.contentWindow!, this.captureAbort.signal).then(() => { if (!this.closed && this.scrollPositions[id] === scroll) bridge.scroll(scroll.x, scroll.y); }).catch(error => this.controller.emit('error', { id, message: String(error) })); }
       const path = bridge.location();
       if (path !== this.controller.route(id).path) {
         if (this.controller.snapshot().focused === id) await this.api.navigate(path);
@@ -247,6 +281,8 @@ export class WallRuntime {
       if (!['navigation', 'focus', 'click', 'interaction', 'scroll', 'shared-state', 'inactive-navigation'].includes(event.type)) return;
       this.contextHistory.push(structuredClone(event));
       if (this.contextHistory.length > 300) this.contextHistory.shift();
+      if (event.type === 'scroll') { const detail = event.detail as { id?: string; x?: number; y?: number; detail?: { x: number; y: number } }; if (detail.id) { const point = detail.detail ?? detail; if (Number.isFinite(point.x) && Number.isFinite(point.y)) this.scrollPositions[detail.id] = { x: point.x!, y: point.y! }; } }
+      this.persistSession();
     });
     const page = (event: Event) => {
       const { source, type, detail } = (event as CustomEvent<{ source: Window; type: string; detail: unknown }>).detail;
@@ -293,4 +329,14 @@ export class WallRuntime {
       });
     };
   }
+}
+
+/** Persisted credentials are redacted; preserve the live host's credential fields. */
+function restoreSavedShared(live: unknown, saved: unknown): unknown {
+  if (Array.isArray(saved)) return saved.map((value, index) => restoreSavedShared(Array.isArray(live) ? live[index] : undefined, value));
+  if (saved && typeof saved === 'object') {
+    const current = live && typeof live === 'object' ? live as Record<string, unknown> : {};
+    return Object.fromEntries([...new Set([...Object.keys(current), ...Object.keys(saved)])].filter(key => !/password|secret|token|credential|authorization|cookie|api.?key/i.test(key) || key in current).map(key => [key, /password|secret|token|credential|authorization|cookie|api.?key/i.test(key) ? current[key] : restoreSavedShared(current[key], (saved as Record<string, unknown>)[key])]));
+  }
+  return saved === undefined ? live : saved;
 }

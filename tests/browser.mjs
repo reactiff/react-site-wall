@@ -164,7 +164,7 @@ try {
   await page.getByRole('button', { name: 'Focus Home', exact: true }).click();
   expect((await api('getState')).layout).toBe('viewport');
   expect((await api('inspect', 'story')).scroll.y).toBe(500);
-  await api('configure', { viewport: { width: 390, height: 844 }, zoom: .65, columns: 3, pan: { x: 24, y: 24 } });
+  await api('configure', { viewport: { width: 430, height: 932 }, zoom: .65, columns: 3, pan: { x: 24, y: 24 } });
   await api('focus', 'home');
   await verifyFeatures(page, api, route);
   await mkdir(new URL('../.artifacts/', import.meta.url), { recursive: true });

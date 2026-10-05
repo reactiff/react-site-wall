@@ -1,3 +1,4 @@
+import { observePageNetwork } from './network.js';
 import type { PageObservation, SharedStateAdapter } from './types.js';
 import { sanitizeContext } from './selection.js';
 
@@ -22,6 +23,7 @@ export function installSiteWallBridge(options: { enabled: boolean; sharedState?:
   if (!options.enabled || typeof window === 'undefined' || window.parent === window) return () => {};
   const win = window as BridgeWindow;
   if (win[key]) return () => {};
+  const stopObservingNetwork = observePageNetwork(win);
   let applying = false;
   let disposed = false;
   const report = (type: string, detail: unknown) => {
@@ -122,6 +124,7 @@ export function installSiteWallBridge(options: { enabled: boolean; sharedState?:
     dispose() {
       if (disposed) return;
       disposed = true;
+      stopObservingNetwork();
       unsubscribe?.();
       win.history.pushState = push; win.history.replaceState = replace;
       win.removeEventListener('popstate', navigation); win.removeEventListener('hashchange', navigation);
