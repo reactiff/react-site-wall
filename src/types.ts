@@ -9,6 +9,7 @@ export interface PageRoute {
   metadata?: Record<string, unknown>;
 }
 export interface RouteManifest { version: 1; routes: PageRoute[] }
+export interface StylesManifest { version: 1; styles: string[] }
 export interface Viewport { width: number; height: number; name?: string }
 export const devices: Viewport[] = [
   { name: 'Phone', width: 390, height: 844 },
@@ -17,6 +18,10 @@ export const devices: Viewport[] = [
   { name: 'Desktop', width: 1920, height: 1080 },
 ];
 export interface WallState {
+  autoCenter: boolean;
+  styleFilter: string;
+  selectionMode: 'none' | 'element' | 'region';
+  selection: ContextSelection | null;
   routes: PageRoute[];
   visible: string[];
   focused: string | null;
@@ -54,7 +59,8 @@ export interface PageObservation {
   route: string;
   title: string;
   text: string;
-  controls: { tag: string; text: string; name: string; type: string }[];
+  controls: { tag: string; text: string; name: string; type: string; value?: string; checked?: boolean }[];
+  historyState?: unknown;
   viewport: Viewport;
   scroll: { x: number; y: number; height: number };
 }
@@ -65,7 +71,17 @@ export interface SiteWallAPI {
   show(id: string, visible: boolean): void;
   focus(id: string): Promise<void>;
   navigate(path: string): Promise<void>;
-  configure(patch: Partial<Pick<WallState, 'layout' | 'viewport' | 'zoom' | 'pan' | 'columns' | 'leftOpen' | 'rightOpen'>>): void;
+  configure(patch: Partial<Pick<WallState, 'layout' | 'viewport' | 'zoom' | 'pan' | 'columns' | 'leftOpen' | 'rightOpen' | 'autoCenter'>>): void;
+  zoomAt(zoom: number, origin: { x: number; y: number }): void;
+  filterStyles(query: string): void;
+  inspectStyles(id?: string, selector?: string): Promise<import('./style-context.js').StyleContext>;
+  setSelectionMode(mode: WallState['selectionMode']): void;
+  selectElement(selector: string, id?: string): Promise<ContextSelection>;
+  selectRegion(rectangle: SelectionRectangle, id?: string): Promise<ContextSelection>;
+  clearSelection(): void;
+  inspectSelection(): ContextSelection | null;
+  promptContext(): Promise<PromptContext>;
+  executePrompt(instruction: string): Promise<PromptResult>;
   inspect(id?: string): Promise<PageObservation>;
   click(selector: string): Promise<void>;
   type(selector: string, value: string): Promise<void>;
@@ -74,3 +90,24 @@ export interface SiteWallAPI {
   styles: StylesheetAdapter;
 }
 declare global { interface Window { sitewall?: SiteWallAPI } }
+export interface SelectionRectangle { x: number; y: number; width: number; height: number }
+export interface ContextSelection {
+  kind: 'element' | 'region'; panelId: string; route: string;
+  rectangle: SelectionRectangle; viewport: Viewport;
+  scroll: { x: number; y: number }; capturedAt: number;
+  element?: { selector: string; tag: string; text: string; html: string; attributes: Record<string, string>; ancestors: string[] };
+  surroundingElements: { selector: string; tag: string; text: string }[];
+  applicationState: unknown;
+}
+export interface PromptContext {
+  version: 1; wallUrl: string; capturedAt: number; wall: WallState;
+  selection: ContextSelection | null; page: PageObservation;
+  applicationState: unknown; history: WallEvent[];
+  styles: import('./style-context.js').StyleContext;
+}
+export interface PromptResult { status: 'completed' | 'failed'; output: string; exitCode: number | null }
+export interface PromptAdapter {
+  execute(instruction: string, context: PromptContext): Promise<PromptResult>;
+  /** Connect an authenticated agent transport to this exact human session. */
+  attach?(api: SiteWallAPI): () => void;
+}

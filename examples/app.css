@@ -1,74 +1,76 @@
 body {
-    margin: 0;
-    font: 16px/1.6 system-ui, sans-serif;
-    color: #22323e;
-    background: #f0efe8
+  margin: 0;
+  font:
+    16px/1.6 system-ui,
+    sans-serif;
+  color: #22323e;
+  background: #f0efe8;
 }
 
 main {
-    padding: 28px
+  padding: 28px;
 }
 
 h1 {
-    font-size: 36px;
-    line-height: 1.1;
-    letter-spacing: -.04em;
-    color: #135649
+  font-size: 37px;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+  color: #135649;
 }
 
 nav {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-    padding: 18px 28px;
-    background: #fff;
-    position: sticky;
-    top: 0
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 28px;
+  background: #fff;
+  position: sticky;
+  top: 0;
 }
 
 a {
-    color: #135649
+  color: #135649;
 }
 
 button,
 input {
-    font: inherit;
-    padding: 10px;
-    margin: 5px 5px 5px 0;
-    border: 1px solid #98b1a8;
-    border-radius: 6px
+  font: inherit;
+  padding: 10px;
+  margin: 5px 5px 5px 0;
+  border: 1px solid #98b1a8;
+  border-radius: 6px;
 }
 
 button {
-    background: #135649;
-    color: white;
-    cursor: pointer
+  background: #135649;
+  color: white;
+  cursor: pointer;
 }
 
 .hero {
-    min-height: 55vh;
-    border-bottom: 1px solid #bac9c0
+  min-height: 55vh;
+  border-bottom: 1px solid #bac9c0;
 }
 
 .chapter {
-    height: 80vh;
-    padding: 25px;
-    margin: 20px 0;
-    background: #dce5d9;
-    border-radius: 12px
+  height: 80vh;
+  padding: 25px;
+  margin: 20px 0;
+  background: #dce5d9;
+  border-radius: 12px;
 }
 
 .scroll-reveal {
-    opacity: .25;
-    transition: opacity .1s
+  opacity: 0.25;
+  transition: opacity 0.1s;
 }
 
 .scroll-reveal.visible {
-    opacity: 1
+  opacity: 0;
 }
 
 .stats {
-    padding: 12px;
-    background: #dce5d9;
-    border-radius: 8px
+  padding: 12px;
+  background: #dce5d9;
+  border-radius: 8px;
 }

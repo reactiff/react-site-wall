@@ -1,4 +1,5 @@
 import type { PageObservation, SharedStateAdapter } from './types.js';
+import { sanitizeContext } from './selection.js';
 
 export interface PageBridge {
   location(): string;
@@ -53,6 +54,8 @@ export function installSiteWallBridge(options: { enabled: boolean; sharedState?:
     if (!applying) report('shared-state', options.sharedState!.read());
   });
   const clickLink = (event: MouseEvent) => {
+    const selected = event.target as Element | null;
+    report('click', { tag: selected?.localName, id: selected?.id, text: (selected as HTMLElement | null)?.innerText?.slice(0, 300), x: event.clientX + win.scrollX, y: event.clientY + win.scrollY, route: location() });
     const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href]');
     if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || anchor.hasAttribute('download')) return;
     const url = new URL(anchor.href, win.location.href);
@@ -63,6 +66,19 @@ export function installSiteWallBridge(options: { enabled: boolean; sharedState?:
   };
   // Observe after React/root handlers, preserving application link side effects.
   win.document.addEventListener('click', clickLink);
+  const wheel = (event: WheelEvent) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    report('zoom', { x: event.clientX, y: event.clientY, deltaY: event.deltaY, deltaMode: event.deltaMode });
+  };
+  const change = (event: Event) => {
+    const target = event.target as Element;
+    report('interaction', { type: event.type, tag: target.localName, id: target.id, name: target.getAttribute('name'), route: location() });
+  };
+  win.document.addEventListener('wheel', wheel, { passive: false });
+  win.document.addEventListener('change', change);
+  const scroll = () => report('scroll', { x: win.scrollX, y: win.scrollY });
+  win.addEventListener('scroll', scroll, { passive: true });
   const shared = options.sharedState ? {
     read: () => options.sharedState!.read(),
     subscribe: options.sharedState.subscribe,
@@ -84,7 +100,11 @@ export function installSiteWallBridge(options: { enabled: boolean; sharedState?:
     inspect() {
       return {
         route: location(), title: win.document.title, text: win.document.body.innerText,
-        controls: [...win.document.querySelectorAll<HTMLElement>('a,button,input,select,textarea,[role="button"]')].map(el => ({ tag: el.tagName.toLowerCase(), text: el.innerText || el.getAttribute('aria-label') || '', name: el.getAttribute('name') || el.id, type: el.getAttribute('type') || '' })),
+        controls: [...win.document.querySelectorAll<HTMLElement>('a,button,input,select,textarea,[role="button"]')].map(el => {
+          const sensitive = /password|hidden|token|secret|credential|credit|cc-|authorization|cookie|api.?key/i.test(`${el.getAttribute('type')} ${el.getAttribute('name')} ${el.id} ${el.getAttribute('autocomplete')}`);
+          return { tag: el.tagName.toLowerCase(), text: el.innerText || el.getAttribute('aria-label') || '', name: el.getAttribute('name') || el.id, type: el.getAttribute('type') || '', ...(!sensitive && 'value' in el ? { value: String(el.value).slice(0, 1000) } : {}), ...(!sensitive && 'checked' in el ? { checked: Boolean(el.checked) } : {}) };
+        }),
+        historyState: sanitizeContext(win.history.state),
         viewport: { width: win.innerWidth, height: win.innerHeight },
         scroll: { x: win.scrollX, y: win.scrollY, height: win.document.documentElement.scrollHeight },
       };
@@ -107,6 +127,9 @@ export function installSiteWallBridge(options: { enabled: boolean; sharedState?:
       win.removeEventListener('popstate', navigation); win.removeEventListener('hashchange', navigation);
       win.removeEventListener('error', error); win.removeEventListener('unhandledrejection', rejection);
       win.document.removeEventListener('click', clickLink);
+      win.document.removeEventListener('wheel', wheel);
+      win.document.removeEventListener('change', change);
+      win.removeEventListener('scroll', scroll);
       delete win[key];
     },
   };

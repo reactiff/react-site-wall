@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { SiteWall, installSiteWallBridge, createStylesheetClient, type RouteManifest } from '../src/index.js';
+import { SiteWall, installSiteWallBridge, createStylesheetClient, createPromptClient, type RouteManifest } from '../src/index.js';
 import manifest from './page-routes.json';
 import '../src/styles.css';
 
@@ -43,4 +43,5 @@ function Application() {
   </main></>;
 }
 const styles = createStylesheetClient({ token: (window as Window & { demoToken: string }).demoToken });
-createRoot(document.getElementById('root')!).render(location.pathname === '/disabled' ? <SiteWall enabled={false} manifest={manifest as RouteManifest} /> : location.pathname === '/sitewall' ? <SiteWall enabled manifest={manifest as RouteManifest} styles={styles} /> : <Application />);
+const prompts = createPromptClient({ token: (window as Window & { demoToken: string }).demoToken });
+createRoot(document.getElementById('root')!).render(location.pathname === '/disabled' ? <SiteWall enabled={false} manifest={manifest as RouteManifest} /> : location.pathname === '/sitewall' ? <SiteWall enabled manifest={manifest as RouteManifest} styles={styles} prompts={prompts} /> : <Application />);

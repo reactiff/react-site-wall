@@ -12,7 +12,7 @@ export class WallController {
     const routes = validateManifest(manifest, wallPath).routes;
     const visible = routes.filter(r => r.included !== false).map(r => r.id);
     const focused = visible[0] ?? null;
-    this.state = { routes, visible, focused, currentRoute: routes.find(r => r.id === focused)?.path ?? '', layout: 'viewport', viewport: devices[0], zoom: .65, pan: { x: 32, y: 32 }, columns: 3, leftOpen: true, rightOpen: true };
+    this.state = { autoCenter: true, styleFilter: '', selectionMode: 'none', selection: null, routes, visible, focused, currentRoute: routes.find(r => r.id === focused)?.path ?? '', layout: 'viewport', viewport: devices[0], zoom: .65, pan: { x: 32, y: 32 }, columns: 3, leftOpen: true, rightOpen: true };
   }
   snapshot = (): WallState => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -24,7 +24,7 @@ export class WallController {
     if (this.log.length > 500) this.log.shift();
     this.observers.forEach(fn => fn(event));
   }
-  private update(patch: Partial<WallState>): void {
+  update(patch: Partial<WallState>): void {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach(fn => fn());
     this.emit('workspace', structuredClone(this.state));
@@ -56,12 +56,18 @@ export class WallController {
     this.emit('navigation', { source, destination: route.id, path });
     return { source, destination: route.id, path };
   }
-  configure(patch: Partial<Pick<WallState, 'layout' | 'viewport' | 'zoom' | 'pan' | 'columns' | 'leftOpen' | 'rightOpen'>>): void {
+  configure(patch: Partial<Pick<WallState, 'layout' | 'viewport' | 'zoom' | 'pan' | 'columns' | 'leftOpen' | 'rightOpen' | 'autoCenter'>>): void {
+    if (patch.autoCenter !== undefined && typeof patch.autoCenter !== 'boolean') throw new Error('Invalid auto-centering');
     if (patch.layout && !['overview', 'viewport'].includes(patch.layout)) throw new Error('Invalid layout');
     if (patch.zoom !== undefined && (!Number.isFinite(patch.zoom) || patch.zoom < .1 || patch.zoom > 2)) throw new Error('Zoom must be between 0.1 and 2');
     if (patch.columns !== undefined && (!Number.isInteger(patch.columns) || patch.columns < 1 || patch.columns > 20)) throw new Error('Columns must be 1–20');
     if (patch.viewport && [patch.viewport.width, patch.viewport.height].some(v => !Number.isInteger(v) || v < 200 || v > 4096)) throw new Error('Viewport dimensions must be 200–4096 CSS pixels');
     if (patch.pan && (!Number.isFinite(patch.pan.x) || !Number.isFinite(patch.pan.y))) throw new Error('Invalid pan');
     this.update(structuredClone(patch));
+  }
+  zoomAt(zoom: number, origin: { x: number; y: number }): void {
+    if (!Number.isFinite(origin.x) || !Number.isFinite(origin.y)) throw new Error('Invalid zoom origin');
+    const { pan, zoom: previous } = this.state;
+    this.configure({ zoom, pan: { x: origin.x - (origin.x - pan.x) * zoom / previous, y: origin.y - (origin.y - pan.y) * zoom / previous } });
   }
 }

@@ -10,6 +10,9 @@ npm run build
 npm run demo
 ```
 
+For automatic rebuilding and browser reload during development, run `npm run demo:dev` and open `http://127.0.0.1:4173/sitewall`. No initial `npm run build` is required. UI source changes rebuild and reload the demo; middleware/server changes restart it automatically. Reloading resets the in-memory demo session.
+
+
 Open **http://127.0.0.1:4173/sitewall**. The example has a shared cart, login/logout, a purchase flow with document navigation, an automatic redirect, and a long page with sticky navigation and intersection effects. esbuild is used only by the example server.
 
 ## Host installation
@@ -24,7 +27,7 @@ npm install /path/to/react-site-wall-0.1.0.tgz
 npx sitewall init
 ```
 
-Setup creates `sitewall/SiteWallEntry.tsx`, `sitewall/page-routes.json`, a server example, and `sitewall/ROUTE-ANALYSIS.md`. Existing files are preserved. Have Codex follow the analysis instructions to derive concrete routes from the host's source and authorized data. The generated manifest is empty rather than filled with guessed routes.
+Setup creates `sitewall/SiteWallEntry.tsx`, `sitewall/page-routes.json`, `sitewall/page-styles.json`, `sitewall/AGENTS.md`, a server example, and `sitewall/ROUTE-ANALYSIS.md`. Existing files are preserved; a conditional reference to SiteWall instructions is added to the host's root `AGENTS.md`. CSS discovery excludes dependencies, build output, and hidden directories. Review the discovered styles manifest. Have Codex follow the route analysis instructions; the route manifest starts empty rather than filled with guessed routes.
 
 Mount the generated entry at `/sitewall` behind an explicit **development-only** flag. Call `connectSiteWall` before mounting ordinary application pages, including pages reached after a document reload. Enable TypeScript JSON imports (`resolveJsonModule`) or load the manifest with the host's own configuration mechanism. Import `react-site-wall/styles.css` separately.
 
@@ -44,7 +47,7 @@ createRoot(document.getElementById('root')!).render(
 
 Alternatively, register the entry with the existing router, outside authentication/layout wrappers that block the workspace. The host must serve real page routes on document requests. A router that responds to `popstate` can omit `hostNavigate`; otherwise supply its own `navigate(path)` function. Server-rendered frameworks may require a client entry and a framework-specific adapter. History API, popstate, hashchange, links, and iframe document loads are observed.
 
-`SiteWall` accepts `enabled`, `manifest`, optional `wallPath`, `styles`, `capture`, and `onReady(api)`. Configuration props are fixed for one mounted session; remount to replace a manifest or adapters. React 18+ is supported.
+`SiteWall` accepts `enabled`, `manifest`, optional `wallPath`, `styles`, `prompts`, `capture`, and `onReady(api)`. Configuration props are fixed for one mounted session; remount to replace a manifest or adapters. React 18+ is supported.
 
 ## Route manifest
 
@@ -71,7 +74,7 @@ For a known unconditional redirect, record `metadata: { "redirectTo": "/destinat
 
 ## Workspace behavior
 
-The dark workspace has collapsible control and stylesheet panels, searchable routes, an address control, device/custom dimensions, zoom, pan, and columns. Drag canvas background to pan; use the zoom slider or Ctrl/Command + wheel to zoom. Canvas scrolling is available. Canvas zoom never changes effective CSS viewport dimensions.
+The dark workspace has collapsible control and stylesheet panels, searchable routes, an address control, device/custom dimensions, zoom, pan, and columns. Drag canvas background to pan; use the continuous zoom slider or smooth Ctrl/Command + wheel zoom. Pointer zoom anchors the content under the pointer, including inside the focused page. Auto Centering defaults on, keeping newly focused panels in view; turn it off to preserve the camera when moving focus. Canvas scrolling is available. Canvas zoom never changes effective CSS viewport dimensions.
 
 Only the focused page accepts content interaction/keyboard focus. Selecting an inactive panel consumes the selection click. After first use, hidden panels stay mounted to preserve page-local session. Layout/device changes reuse frames. Stylesheet drafts survive panel collapse.
 
@@ -90,7 +93,7 @@ const sharedStateAdapter = {
 connectSiteWall(developmentEnabled, sharedStateAdapter, hostNavigate);
 ```
 
-Snapshots must support structured cloning. Include shared application state only; keep scroll/forms/local presentation independent. Install the adapter in every page before rendering. Changes propagate to mounted frames; newly loaded pages receive the latest snapshot. Applying a snapshot suppresses immediate notification echoes; the adapter should avoid deferred echoes. Explicitly invalidate server-query caches after mutations/auth changes. Cookies alone do not notify React caches. Snapshots remain in memory, outside the event log and browser storage. Reloading the wall starts a new workspace session.
+Snapshots must support structured cloning. Include shared application state only; keep scroll/forms/local presentation independent. Install the adapter in every page before rendering. Changes propagate to mounted frames; newly loaded pages receive the latest snapshot. Applying a snapshot suppresses immediate notification echoes; the adapter should avoid deferred echoes. Explicitly invalidate server-query caches after mutations/auth changes. Cookies alone do not notify React caches. Snapshots remain in memory; selection and prompt context include redacted state snapshots. Reloading the wall starts a new workspace session.
 
 ## Full-page representation
 
@@ -113,7 +116,7 @@ const token = randomBytes(24).toString('hex');
 const middleware = createStylesheetMiddleware({
   enabled: developmentEnabled,
   root: projectRoot,
-  files: ['src/app.css', 'src/theme.css'],
+  // Reads sitewall/page-styles.json by default. Optional files overrides its allowlist.
   token,
   origin: 'http://localhost:3000',
 });
@@ -121,7 +124,11 @@ const middleware = createStylesheetMiddleware({
 const styles = createStylesheetClient({ token });
 ```
 
-The editor lists allowlisted CSS files, reads them, and debounces saves by 500 ms. It prevents file switching while a draft is unsaved and keeps drafts after errors/collapse. Actual source writes participate in the host's HMR/file watcher. SiteWall also appends saved CSS to each frame for immediate feedback. The temporary overlay sits at the end of the cascade; exact source ordering, CSS modules, preprocessors, and imports may require a custom `StylesheetAdapter` and host HMR. The bundled server edits plain `.css` only.
+Each applicable CSS rule has its own compact CodeMirror editor with CSS highlighting, property and value completion, and numeric editing. Filenames appear at the top right; editors have no line numbers or formatting/reload buttons. Ctrl/Command + Shift + F formats the current rule. Edits replace only the original rule block, preserving surrounding source. Arrow Up/Down adjusts a number by 1, Shift by 10, and Alt by 0.1. Filtering hides editors without discarding drafts or stopping autosave. Saves debounce by 500 ms, preserve drafts after errors/collapse, and participate in host HMR. Immediate updates replace uniquely identified loaded sources at their existing document position, preserving cascade order. Unmatched sources rely on host HMR and emit `style-unresolved`; CSS modules and preprocessors may require a custom adapter. The bundled server edits plain `.css` only.
+
+The project-local manifest is `{ "version": 1, "styles": ["src/app.css", "src/theme.css"] }`. Server requests reread it, so it also serves as the editing allowlist. Explicit `files` remains supported. Existing installations fall back to `sitewall/styles.json` only when `page-styles.json` is absent; rerunning setup copies a legacy manifest into the new filename without overwriting either file. The panel shows rules matching the live page, or the selected element/region; unrelated selectors are hidden. Filtering matches selectors, declarations, and filenames. Selected-element rules follow native cascade precedence, with inherited rules after direct matches; page-wide rules use native precedence where they match the same element, then specificity and source order for independent or conflicting element contexts. Style context presents matched declarations per property, strongest first. Native browser evaluation in the original CSSOM rules handles `@scope` boundaries and proximity, size/style container queries, named containers, nesting, layers, important, active media/supports, and source order. Private non-inherited CSS property probes are restored synchronously without changing DOM attributes or visual declarations. Inheritance candidates are marked.
+
+Every cascade row contains an authoritative `getComputedStyle()` value and a `source` discriminant: `known-declaration`, `opaque-cross-origin`, or `browser`. Inaccessible cross-origin sheets appear in `opaqueSources` as `opaque-source`, including their active status. They never make the computed value unresolved. Where active opaque sources could win, readable declarations remain candidates and the source is conservatively opaque: CSSOM cannot prove a hidden winner, even when its value equals a readable declaration. Inline important declarations are known because they outrank author stylesheet rules. Disabled or media-inactive opaque sheets do not affect attribution. The inspector does not disable stylesheets, fetch blocked source text, or fabricate hidden selectors.
 
 Requests require the token and exact host/origin. Explicit file allowlists and realpath checks reject root escapes, including symlinks. Edits are limited to 1 MiB. Revision hashes and serialized writes reject conflicting disk edits with HTTP 409; reopen from disk to resolve conflicts. The server is disabled unless explicitly enabled.
 
@@ -150,6 +157,34 @@ unsubscribe();
 
 `configure` supports `layout`, `viewport`, `zoom`, `pan`, `columns`, `leftOpen`, and `rightOpen`. `inspect(id?)` returns panel/assigned/current routes, availability, rendered text, control summaries, viewport, and scroll. Selectors must identify exactly one visible enabled control. Text entry uses native setters and input/change events for React. Missing bridges, unavailable pages, ambiguous controls, and failed actions are observable errors.
 
+Additional shared API methods:
+
+```ts
+api.configure({ autoCenter: false });
+api.zoomAt(.731, { x: 250, y: 180 }); // origin in canvas content coordinates
+api.filterStyles('theme');
+await api.inspectStyles('model-one', 'main h1');
+api.setSelectionMode('element'); // 'region' or 'none'
+await api.selectElement('main h1', 'model-one');
+await api.selectRegion({ x: 20, y: 100, width: 300, height: 240 }, 'model-one');
+api.inspectSelection();
+const context = await api.promptContext();
+await api.executePrompt('Reduce spacing in this section.');
+api.clearSelection();
+```
+
+## Selection and Codex prompts
+
+Select an element by clicking any live panel, or draw a rectangle in region mode. Selection consumes the pointer gesture without activating application controls or moving interaction focus. The outline remains visible. Regions use document CSS coordinates, including page scroll. Starting selection switches an overview to its live viewports. Agent selection calls capture the same state as human gestures.
+
+Prompt context includes selection geometry, selector/markup/ancestors or intersecting elements, viewport and scroll, assigned and actual route, shared state, safe form values, router history state, bounded navigation/interaction history, wall camera/visible panels, and matched styles. Credential-like fields and sensitive form values are excluded/redacted. The host shared-state adapter supplies application internals; SiteWall cannot infer unexposed component state. A captured selection remains a timestamped snapshot; select again after materially changing the page. Route changes that invalidate the selection fail observably.
+
+Attach `createPromptMiddleware({ enabled, root, token, origin })` from `react-site-wall/server` alongside the stylesheet middleware. Supply `prompts={createPromptClient({ token })}` to SiteWall. The setup server example composes both. Install and authenticate the Codex CLI in the development server's environment. Submission runs `codex exec` against the host root with `workspace-write` sandboxing and ephemeral context, respecting configured approvals. Evolving behavioral instructions live in `sitewall/AGENTS.md`, sourced from the package's [SITEWALL-AGENTS.md](./SITEWALL-AGENTS.md).
+
+The same middleware exposes an authenticated `/__sitewall/session` command relay. The prompt adapter connects the exact human tab; Codex receives origin and credentials through environment variables and can invoke the shared API there. Only explicitly supported API methods are allowed, with no arbitrary JavaScript evaluation. Browser GET polls, agent POST submits `{sessionId,method,args}`, and browser PUT returns results/errors. One tab is leased per middleware instance to prevent inspecting a different wall by accident. Closed/unreachable sessions time out and verification remains unresolved. The tab identifier survives refresh, while application session state restarts. No separate agent wall is created.
+
+Prompt results report process completion/failure and Codex's output; a zero exit code alone does not establish visual correctness. The example executor is explicitly simulated and makes no source changes. Real host verification requires the actual CLI and the host router/store/HMR integration.
+
 The latest 500 events have monotonic sequence numbers: workspace, focus, navigation/completion, restoration, blocked panels, shared-state notification, stylesheet revision, captures, actions, and errors. Await actions and inspect relevant page/event state; network/application work can require further polling. Humans and agents share one runtime. An external MCP/browser tool can evaluate this API; no separate automation session is created. Page observations can contain private host content and must follow the host's development access rules.
 
 ## Production isolation
@@ -163,8 +198,11 @@ Frames are for trusted same-origin host code. The iframe sandbox restricts top n
 ```sh
 npm test
 npm run test:browser
+npm run test:css-browser # focused scope/container/opaque-source inspection
 npm run typecheck
 npm pack --dry-run
+# Optional: invokes the installed, authenticated Codex CLI against a disposable host:
+node tests/codex-smoke.mjs --run
 ```
 
 Windows browser tests use installed Chrome. Elsewhere install Playwright Chromium (`npx playwright install chromium`). `SITEWALL_BROWSER_CHANNEL` selects another installed supported channel. Tests restore the example CSS and write ignored screenshots to `.artifacts/`.

@@ -7,6 +7,20 @@ const manifest = { version: 1, routes: [
   { id: 'shop', title: 'Shop', path: '/shop' },
   { id: 'filtered', title: 'Filtered', path: '/shop?sort=price', included: false },
 ] };
+test('continuous camera zoom anchors its origin and auto-centering is configurable', () => {
+  const wall = new WallController(manifest);
+  wall.configure({ autoCenter: false, zoom: .6537, pan: { x: -37, y: 52 } });
+  const origin = { x: 233, y: 188 };
+  const before = wall.snapshot();
+  const world = { x: (origin.x - before.pan.x) / before.zoom, y: (origin.y - before.pan.y) / before.zoom };
+  wall.zoomAt(.97143, origin);
+  const after = wall.snapshot();
+  assert.equal(after.autoCenter, false);
+  assert.ok(Math.abs(after.pan.x + world.x * after.zoom - origin.x) < 1e-10);
+  assert.ok(Math.abs(after.pan.y + world.y * after.zoom - origin.y) < 1e-10);
+  assert.throws(() => wall.zoomAt(.8, { x: NaN, y: 2 }));
+  assert.throws(() => wall.configure({ autoCenter: 'yes' }));
+});
 test('route identity survives repeated navigation and reveals excluded destinations', () => {
   const wall = new WallController(manifest);
   assert.deepEqual(wall.navigate('/shop'), { source: 'home', destination: 'shop', path: '/shop' });

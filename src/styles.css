@@ -56,7 +56,8 @@
 }
 
 .sw-toolbar strong {
-    letter-spacing: .08em
+    letter-spacing: .08em;
+    font-size: 2em;
 }
 
 .sw-toolbar form {
@@ -66,7 +67,8 @@
 }
 
 .sw-toolbar input {
-    width: 100%
+    width: 100%;
+    font-size: 2em;
 }
 
 .sw-workspace {
@@ -132,9 +134,10 @@
 }
 
 .sw-canvas {
+    overflow-anchor: none;
     position: relative;
     flex: 1;
-    overflow: auto;
+    overflow: hidden;
     min-width: 0;
     background-color: #0b1019;
     background-image: radial-gradient(#26344b 1px, transparent 1px);
@@ -336,3 +339,32 @@
 .sw-blocked button {
     align-self: flex-start
 }
+
+.sw-controls .sw-checkbox { flex-direction: row; align-items: center }
+.sw-context-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3 }
+.sw-context-overlay.sw-picking { pointer-events: auto; cursor: crosshair; background: #73e2c408; touch-action: none }
+.sw-selection-box { position: absolute; border: 2px solid #36d9ad; background: #36d9ad20; pointer-events: none; box-shadow: 0 0 0 1px #071c16 }
+.sw-selection-box span { position: absolute; top: 0; left: 0; background: #14392f; color: #fff; font: 12px/1.5 system-ui; padding: 2px 5px; white-space: nowrap }
+.sw-prompt { border-top: 1px solid #34445d; background: #101827; padding: 12px 16px; max-height: 35vh; overflow: auto }
+.sw-prompt form { display: flex; gap: 12px }
+.sw-prompt textarea { flex: 1; min-height: 70px; resize: vertical }
+.sw-prompt pre { white-space: pre-wrap; max-height: 140px; overflow: auto }
+.sw-style-file { margin-bottom: 16px; min-width: 0 }
+.sw-styles > [hidden] { display: none }
+.sw-style-file h3 { font-size: 12px; overflow-wrap: anywhere; margin: 12px 0 6px; }
+.sw-code-editor { margin-top: 8px; border: 1px solid #34445d; border-radius: 6px; overflow: hidden; }
+.sw-code-editor .cm-editor { max-height: 500px; }
+.sw-styles details { overflow-wrap: anywhere; }
+.sw-styles input { width: 100%; }
+
+.sw-styles { padding: 0; gap: 0; }
+.sw-styles > input { padding: 2px 5px; border-radius: 0; margin: 0; position: sticky; top: 0; z-index: 2; }
+.sw-style-rule { position: relative; margin: 0; padding: 0; border-bottom: 1px solid #34445d; min-width: 0; }
+.sw-rule-filename { text-align: right; font: 11px/1.3 system-ui; color: #91a3be; overflow-wrap: anywhere; }
+.sw-style-rule .sw-code-editor { margin: 0 4px; padding: 0; border: 0; border-radius: 0; }
+.sw-rule-status { font-size: 11px; color: #91a3be; margin: 0; padding: 0; }
+
+.sw-selection-toolbar { display: flex; height: 26px; min-height: 26px; position: sticky; top: 0; z-index: 3; background: #151f30; border-bottom: 1px solid #34445d; }
+.sw-selection-toolbar button { flex: 1; font-size: 11px; padding: 2px 5px; margin: 0; border: 0; border-radius: 0; white-space: nowrap; }
+.sw-selection-toolbar button[aria-pressed="true"] { background: #244f47; color: #73e2c4; }
+.sw-styles > input { top: 26px; }

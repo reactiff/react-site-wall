@@ -1,10 +1,13 @@
 import { getPageBridge, type PageBridge } from './bridge.js';
 import { capturePage } from './capture.js';
 import { WallController } from './controller.js';
-import type { PageObservation, SiteWallAPI, StylesheetAdapter } from './types.js';
+import type { ContextSelection, PromptAdapter, PromptContext, SelectionRectangle, SiteWallAPI, StylesheetAdapter, WallEvent } from './types.js';
+import { captureSelection, sanitizeContext } from './selection.js';
+import { inspectStyleContext, applyStylesheet, restoreStylesheets } from './style-context.js';
 
 export class WallRuntime {
   readonly frames = new Map<string, HTMLIFrameElement>();
+  canvas?: HTMLElement;
   private shared: unknown;
   private hasShared = false;
   private closed = false;
@@ -15,8 +18,9 @@ export class WallRuntime {
   private captureQueue: Promise<unknown> = Promise.resolve();
   private captureAbort = new AbortController();
   private overlays = new Map<string, string>();
+  private contextHistory: WallEvent[] = [];
   readonly api: SiteWallAPI;
-  constructor(readonly controller: WallController, styles: StylesheetAdapter, private customCapture?: (win: Window, signal: AbortSignal) => Promise<string[]>) {
+  constructor(readonly controller: WallController, styles: StylesheetAdapter, private customCapture?: (win: Window, signal: AbortSignal) => Promise<string[]>, private prompts?: PromptAdapter) {
     const action = async <T>(name: string, fn: () => T | Promise<T>): Promise<T> => {
       try { const result = await fn(); controller.emit('action', { name, success: true }); return result; }
       catch (error) { controller.emit('error', { action: name, message: String(error) }); throw error; }
@@ -41,6 +45,48 @@ export class WallRuntime {
         return work;
       }),
       configure: patch => controller.configure(patch),
+      zoomAt: (zoom, origin) => {
+        const wall = this.canvas?.querySelector<HTMLElement>('.sw-wall');
+        controller.zoomAt(zoom, { x: origin.x - (wall?.offsetLeft ?? 0), y: origin.y - (wall?.offsetTop ?? 0) });
+      },
+      filterStyles: query => { if (typeof query !== 'string') throw new Error('Invalid styles filter'); controller.update({ styleFilter: query }); },
+      inspectStyles: (id, selector) => action('inspectStyles', async () => {
+        const panelId = id ?? controller.snapshot().selection?.panelId ?? this.focused();
+        await this.ready(panelId);
+        const win = this.frames.get(panelId)!.contentWindow!;
+        const selection = controller.snapshot().selection;
+        const selected = selection?.panelId === panelId ? selection : null;
+        return inspectStyleContext(win, selector ?? selected?.element?.selector, await styles.list(), selected?.kind === 'region' ? selected.rectangle : undefined);
+      }),
+      setSelectionMode: mode => {
+        if (!['none', 'element', 'region'].includes(mode)) throw new Error('Invalid selection mode');
+        controller.update({ selectionMode: mode, ...(mode !== 'none' ? { layout: 'viewport' as const } : {}) });
+      },
+      selectElement: (selector, id) => action('selectElement', async () => {
+        const panelId = id ?? this.focused();
+        await this.ready(panelId);
+        const doc = this.frames.get(panelId)!.contentDocument!;
+        const elements = doc.querySelectorAll(selector);
+        if (elements.length !== 1) throw new Error('Selection selector must identify exactly one element');
+        return this.select(panelId, elements[0]);
+      }),
+      selectRegion: (rectangle, id) => action('selectRegion', async () => {
+        const panelId = id ?? this.focused();
+        await this.ready(panelId);
+        return this.select(panelId, rectangle);
+      }),
+      clearSelection: () => controller.update({ selection: null, selectionMode: controller.snapshot().selectionMode === 'element' ? 'element' : 'none' }),
+      inspectSelection: () => structuredClone(controller.snapshot().selection),
+      promptContext: () => action('promptContext', () => this.promptContext()),
+      executePrompt: instruction => action('executePrompt', async () => {
+        if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > 20000) throw new Error('Enter an instruction of at most 20000 characters');
+        if (!this.prompts) throw new Error('No development Codex prompt adapter configured');
+        const context = await this.promptContext();
+        controller.emit('prompt-start', { panelId: context.selection?.panelId ?? context.wall.focused });
+        const result = await this.prompts.execute(instruction, context);
+        controller.emit('prompt-result', result);
+        return result;
+      }),
       inspect: id => action('inspect', async () => {
         await this.navigationQueue;
         const panelId = id ?? this.focused();
@@ -81,6 +127,26 @@ export class WallRuntime {
       },
     };
   }
+  private select(panelId: string, target: Element | SelectionRectangle): ContextSelection {
+    const win = this.frames.get(panelId)!.contentWindow!;
+    if (this.blocked.has(panelId) || getPageBridge(win).location().split('#')[0] !== this.controller.route(panelId).path.split('#')[0]) throw new Error('Cannot select an unavailable assigned page');
+    const selection = captureSelection(win, panelId, getPageBridge(win).shared?.read() ?? this.shared, target);
+    const state = this.controller.snapshot();
+    this.controller.update({ selection, selectionMode: selection.kind === 'element' && state.selectionMode === 'element' ? 'element' : 'none', layout: 'viewport', visible: state.visible.includes(panelId) ? state.visible : [...state.visible, panelId] });
+    this.controller.emit('selection', selection);
+    return structuredClone(selection);
+  }
+  private async promptContext(): Promise<PromptContext> {
+    await this.navigationQueue;
+    await this.sharedQueue;
+    const selection = this.api.inspectSelection();
+    const id = selection?.panelId ?? this.focused();
+    const page = await this.api.inspect(id);
+    if (!page.available) throw new Error('Selected page is unavailable');
+    if (selection && selection.route !== page.route) throw new Error('Selected route changed; select the context again');
+    const applicationState = (await this.ready(id)).shared?.read() ?? this.shared;
+    return sanitizeContext({ version: 1, wallUrl: window.location.href, capturedAt: Date.now(), wall: this.api.getState(), selection, page, applicationState, history: this.contextHistory, styles: await this.api.inspectStyles(id, selection?.element?.selector) }) as PromptContext;
+  }
   private focused(): string {
     const id = this.controller.snapshot().focused;
     if (!id) throw new Error('No panel is focused');
@@ -112,9 +178,7 @@ export class WallRuntime {
       const doc = frame.contentDocument;
       if (!doc) return;
       for (const [id, content] of this.overlays) {
-        let style = [...doc.querySelectorAll<HTMLStyleElement>('style[data-sitewall-file]')].find(el => el.dataset.sitewallFile === id);
-        if (!style) { style = doc.createElement('style'); style.dataset.sitewallFile = id; doc.head.append(style); }
-        style.textContent = content;
+        if (!applyStylesheet(doc, id, content)) this.controller.emit('style-unresolved', { id, reason: 'No unique loaded stylesheet matches this source; host HMR must apply the edit.' });
       }
     } catch (error) { this.controller.emit('error', { message: String(error) }); }
   }
@@ -179,6 +243,11 @@ export class WallRuntime {
   attach(): () => void {
     this.closed = false;
     this.captureAbort = new AbortController();
+    const history = this.controller.observe(event => {
+      if (!['navigation', 'focus', 'click', 'interaction', 'scroll', 'shared-state', 'inactive-navigation'].includes(event.type)) return;
+      this.contextHistory.push(structuredClone(event));
+      if (this.contextHistory.length > 300) this.contextHistory.shift();
+    });
     const page = (event: Event) => {
       const { source, type, detail } = (event as CustomEvent<{ source: Window; type: string; detail: unknown }>).detail;
       const entry = [...this.frames].find(([, frame]) => frame.contentWindow === source);
@@ -211,13 +280,16 @@ export class WallRuntime {
     window.addEventListener('sitewall:page', page);
     const previous = window.sitewall;
     window.sitewall = this.api;
+    const detachPrompts = this.prompts?.attach?.(this.api);
     return () => {
       this.closed = true;
+      history();
+      detachPrompts?.();
       this.captureAbort.abort();
       window.removeEventListener('sitewall:page', page);
       if (window.sitewall === this.api) window.sitewall = previous;
       this.frames.forEach(frame => {
-        try { frame.contentDocument?.querySelectorAll('style[data-sitewall-file]').forEach(el => el.remove()); } catch { /* Cross-origin frame. */ }
+        try { if (frame.contentDocument) restoreStylesheets(frame.contentDocument); } catch { /* Cross-origin frame. */ }
       });
     };
   }

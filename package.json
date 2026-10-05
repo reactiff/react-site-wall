@@ -3,36 +3,65 @@
   "version": "0.1.0",
   "description": "A shared spatial development workspace for React applications",
   "type": "module",
-  "files": ["dist", "bin", "README.md", "REQUIREMENTS.md"],
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "REQUIREMENTS.md",
+    "SITEWALL-AGENTS.md"
+  ],
   "exports": {
-    ".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"},
-    "./server": {"types": "./dist/server.d.ts", "import": "./dist/server.js"},
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
     "./styles.css": "./dist/styles.css"
   },
-  "bin": {"sitewall": "./bin/sitewall.mjs"},
+  "bin": {
+    "sitewall": "./bin/sitewall.mjs"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-css.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "test:browser": "node tests/browser.mjs",
+    "test:browser": "node tests/browser.mjs && node tests/css-inspection.mjs",
+    "test:css-browser": "node tests/css-inspection.mjs",
     "demo": "node examples/server.mjs",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "demo:dev": "node scripts/demo-dev.mjs"
   },
-  "peerDependencies": {"react": ">=18", "react-dom": ">=18"},
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
   "dependencies": {
-    "html2canvas": "^1.4.1",
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
     "@xog/agentic": "^0.1.2",
-    "@xog/creative": "^0.1.2"
+    "@xog/creative": "^0.1.2",
+    "html2canvas": "^1.4.1",
+    "prettier": "^3.9.9",
+    "specificity": "^1.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5.9.0",
+    "esbuild": "^0.25.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "esbuild": "^0.25.0",
-    "@playwright/test": "^1.55.0"
+    "typescript": "^5.9.0"
   },
-  "engines": {"node": ">=20"}
+  "engines": {
+    "node": ">=20"
+  }
 }

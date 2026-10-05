@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { WallController } from './controller.js';
 import { WallRuntime } from './runtime.js';
 import { StylesPanel } from './StylesPanel.js';
-import { devices, type RouteManifest, type SiteWallAPI, type StylesheetAdapter } from './types.js';
+import { devices, type PromptAdapter, type RouteManifest, type SiteWallAPI, type StylesheetAdapter } from './types.js';
+import { ContextOverlay } from './ContextOverlay.js';
 
 const noStyles: StylesheetAdapter = {
   async list() { return []; },
@@ -14,25 +15,31 @@ export interface SiteWallProps {
   manifest: RouteManifest;
   wallPath?: string;
   styles?: StylesheetAdapter;
+  prompts?: PromptAdapter;
   onReady?: (api: SiteWallAPI) => void;
   capture?: (win: Window, signal: AbortSignal) => Promise<string[]>;
 }
 export function SiteWall(props: SiteWallProps) {
   return props.enabled ? <Workspace {...props} /> : null;
 }
-function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, capture, onReady }: SiteWallProps) {
+function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, prompts, capture, onReady }: SiteWallProps) {
   // Configuration is fixed for one session; remount explicitly to replace a manifest.
   const [controller] = useState(() => new WallController(manifest, wallPath));
-  const [runtime] = useState(() => new WallRuntime(controller, styles, capture));
+  const [runtime] = useState(() => new WallRuntime(controller, styles, capture, prompts));
   const state = useSyncExternalStore(controller.subscribe, controller.snapshot, controller.snapshot);
   const [visited, setVisited] = useState(() => new Set(state.visible));
   const [filter, setFilter] = useState('');
   const [address, setAddress] = useState(state.currentRoute);
   const [error, setError] = useState('');
+  const [instruction, setInstruction] = useState('');
+  const [promptOutput, setPromptOutput] = useState('');
+  const [promptBusy, setPromptBusy] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
   const [blocked, setBlocked] = useState<Record<string, string>>({});
   const [images, setImages] = useState<Record<string, string[]>>({});
   const [capturing, setCapturing] = useState(false);
   const [refreshRevision, setRefreshRevision] = useState(0);
+  const [, redrawSelection] = useState(0);
   const captureVersion = useRef(0);
   const drag = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const canvas = useRef<HTMLElement | null>(null);
@@ -40,6 +47,7 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, captur
   useEffect(() => {
     const detach = runtime.attach();
     const unobserve = controller.observe(event => {
+      if (event.type === 'scroll' && controller.snapshot().selection) redrawSelection(value => value + 1);
       if (event.type === 'error' || event.type === 'unmapped-navigation' || event.type === 'external-navigation') setError(JSON.stringify(event.detail));
       if (event.type === 'stylesheet' || event.type === 'shared-state' || event.type === 'navigation-complete') {
         setImages({});
@@ -58,16 +66,71 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, captur
   }, [runtime, controller]);
   useEffect(() => { onReady?.(runtime.api); }, [runtime, onReady]);
   useEffect(() => {
+    const documents = new Set<Document>();
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const current = controller.snapshot();
+      if (!current.selection && current.selectionMode === 'none') return;
+      event.preventDefault();
+      runtime.api.clearSelection();
+    };
+    const listen = (doc: Document) => {
+      if (documents.has(doc)) return;
+      documents.add(doc);
+      doc.addEventListener('keydown', escape, true);
+    };
+    listen(document);
+    const listenToFrames = () => {
+      for (const frame of runtime.frames.values()) {
+        try { if (frame.contentDocument) listen(frame.contentDocument); } catch { /* Cross-origin pages are unavailable for selection. */ }
+      }
+    };
+    listenToFrames();
+    const unsubscribe = controller.observe(event => { if (event.type === 'ready') listenToFrames(); });
+    return () => { unsubscribe(); for (const doc of documents) doc.removeEventListener('keydown', escape, true); };
+  }, [runtime, controller]);
+  useEffect(() => {
     const surface = canvas.current!;
+    let animation = 0;
+    let targetZoom = controller.snapshot().zoom;
+    let anchor = { x: 0, y: 0 };
+    let lastTime = 0;
+    const animate = (time: number) => {
+      const current = controller.snapshot().zoom;
+      const amount = 1 - Math.exp(-Math.min(64, lastTime ? time - lastTime : 16) / 45);
+      lastTime = time;
+      const next = current + (targetZoom - current) * amount;
+      runtime.api.zoomAt(Math.abs(targetZoom - next) < .00001 ? targetZoom : next, anchor);
+      if (Math.abs(targetZoom - next) >= .00001) animation = requestAnimationFrame(animate);
+      else { animation = 0; lastTime = 0; }
+    };
     const wheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      controller.configure({ zoom: Math.max(.1, Math.min(2, controller.snapshot().zoom - event.deltaY * .001)) });
+      const bounds = surface.getBoundingClientRect();
+      zoomWheel(event.deltaY, event.deltaMode, { x: event.clientX - bounds.left - surface.clientLeft + surface.scrollLeft, y: event.clientY - bounds.top - surface.clientTop + surface.scrollTop });
     };
+    const zoomWheel = (delta: number, mode: number, origin: { x: number; y: number }) => {
+      const pixels = delta * (mode === 1 ? 16 : mode === 2 ? surface.clientHeight : 1);
+      anchor = origin;
+      targetZoom = Math.max(.1, Math.min(2, (animation ? targetZoom : controller.snapshot().zoom) * Math.exp(-pixels * .002)));
+      if (!animation) animation = requestAnimationFrame(animate);
+    };
+    const unobserve = controller.observe(event => {
+      if (event.type !== 'zoom') return;
+      const { id, detail } = event.detail as { id: string; detail: { x: number; y: number; deltaY: number; deltaMode: number } };
+      const frame = runtime.frames.get(id);
+      if (!frame) return;
+      const bounds = surface.getBoundingClientRect();
+      const page = frame.getBoundingClientRect();
+      const scale = controller.snapshot().zoom;
+      zoomWheel(detail.deltaY, detail.deltaMode, { x: page.left + detail.x * scale - bounds.left - surface.clientLeft + surface.scrollLeft, y: page.top + detail.y * scale - bounds.top - surface.clientTop + surface.scrollTop });
+    });
     surface.addEventListener('wheel', wheel, { passive: false });
-    return () => surface.removeEventListener('wheel', wheel);
-  }, [controller]);
+    return () => { surface.removeEventListener('wheel', wheel); unobserve(); cancelAnimationFrame(animation); };
+  }, [controller, runtime]);
   useEffect(() => {
+    if (!state.autoCenter) return;
     const task = requestAnimationFrame(() => {
       const panel = state.focused ? panels.current.get(state.focused) : undefined;
       if (!panel || !canvas.current) return;
@@ -78,7 +141,7 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, captur
       if (dx || dy) { const pan = controller.snapshot().pan; controller.configure({ pan: { x: pan.x + dx, y: pan.y + dy } }); }
     });
     return () => cancelAnimationFrame(task);
-  }, [state.focused, controller]);
+  }, [state.focused, state.autoCenter, controller]);
   useEffect(() => { setAddress(state.currentRoute); }, [state.currentRoute]);
   useEffect(() => {
     setVisited(previous => state.visible.every(id => previous.has(id)) ? previous : new Set([...previous, ...state.visible]));
@@ -115,6 +178,7 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, captur
         <button type="submit">Go</button>
       </form>
       <span>{state.visible.length} pages</span>
+      <button aria-expanded={promptOpen} onClick={() => setPromptOpen(value => !value)}>Prompt Codex</button>
       <button aria-label="Toggle styles" aria-expanded={state.rightOpen} onClick={() => controller.configure({ rightOpen: !state.rightOpen })}>Styles ◧</button>
     </header>
     {error ? <div role="alert" className="sw-error">{error}<button onClick={() => setError('')}>Dismiss</button></div> : null}
@@ -124,9 +188,14 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, captur
         <label>Layout<select value={state.layout} onChange={e => controller.configure({ layout: e.target.value as 'viewport' | 'overview' })}><option value="viewport">Live viewports</option><option value="overview">Full-page overview</option></select></label>
         <label>Device<select value={devices.findIndex(d => d.width === state.viewport.width && d.height === state.viewport.height)} onChange={e => { if (+e.target.value >= 0) controller.configure({ viewport: devices[+e.target.value] }); setImages({}); }}><option value={-1}>Custom</option>{devices.map((d, i) => <option key={d.name} value={i}>{d.name} · {d.width} × {d.height}</option>)}</select></label>
         <div className="sw-dimensions">{(['width', 'height'] as const).map(dimension => <label key={dimension}>{dimension}<input type="number" min={200} max={4096} value={state.viewport[dimension]} onChange={e => { const value = +e.target.value; if (value >= 200 && value <= 4096) { controller.configure({ viewport: { ...state.viewport, [dimension]: value } }); setImages({}); } }} /></label>)}</div>
-        <label>Zoom · {Math.round(state.zoom * 100)}%<input aria-label="Zoom" type="range" min=".1" max="2" step=".05" value={state.zoom} onChange={e => controller.configure({ zoom: +e.target.value })} /></label>
+        <label>Zoom · {Math.round(state.zoom * 100)}%<input aria-label="Zoom" type="range" min=".1" max="2" step=".001" value={state.zoom} onChange={e => controller.configure({ zoom: +e.target.value })} /></label>
         <label>Columns<input type="number" min={1} max={20} value={state.columns} onChange={e => { if (+e.target.value >= 1 && +e.target.value <= 20) controller.configure({ columns: +e.target.value }); }} /></label>
         <button onClick={() => controller.configure({ pan: { x: 32, y: 32 }, zoom: .65 })}>Reset canvas</button>
+        <label className="sw-checkbox"><input type="checkbox" checked={state.autoCenter} onChange={event => runtime.api.configure({ autoCenter: event.target.checked })} />Auto Centering</label>
+        <h2>Context selection</h2>
+        <button aria-pressed={state.selectionMode === 'element'} onClick={() => runtime.api.setSelectionMode(state.selectionMode === 'element' ? 'none' : 'element')}>Select element</button>
+        <button aria-pressed={state.selectionMode === 'region'} onClick={() => runtime.api.setSelectionMode(state.selectionMode === 'region' ? 'none' : 'region')}>Select region</button>
+        {state.selection && <><p className="sw-hint">{state.selection.kind} on {state.selection.route} · {Math.round(state.selection.rectangle.width)} × {Math.round(state.selection.rectangle.height)} at {Math.round(state.selection.rectangle.x)}, {Math.round(state.selection.rectangle.y)}</p><button onClick={() => runtime.api.clearSelection()}>Clear selection</button></>}
         {state.layout === 'overview' ? <><button disabled={capturing} onClick={() => void refreshOverview()}>{capturing ? 'Capturing…' : 'Refresh full pages'}</button><p className="sw-hint">Viewport slices retain scroll behavior. Select a page to interact in its live viewport. Refresh after page changes.</p></> : null}
         <h2>Routes</h2>
         <input aria-label="Filter routes" placeholder="Search title, group, route" value={filter} onChange={e => setFilter(e.target.value)} />
@@ -135,8 +204,9 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, captur
           <button aria-pressed={state.focused === route.id} onClick={() => perform(runtime.api.focus(route.id))}><span>{route.title}</span><small>{route.group ? `${route.group} · ` : ''}{route.path}</small></button>
         </div>)}</div>
       </aside> : null}
-      <main ref={canvas} className="sw-canvas" aria-label="Page canvas" onPointerDown={e => {
-        if (e.target !== e.currentTarget || e.button !== 0) return;
+      <main ref={element => { canvas.current = element; runtime.canvas = element ?? undefined; }} className="sw-canvas" aria-label="Page canvas" onPointerDown={e => {
+        if (e.button !== 0 || (e.target as Element).closest('.sw-page')) return;
+        runtime.api.clearSelection();
         e.currentTarget.setPointerCapture(e.pointerId);
         drag.current = { x: e.clientX, y: e.clientY, panX: state.pan.x, panY: state.pan.y };
       }} onPointerMove={e => {
@@ -155,14 +225,26 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, captur
                 {blockMessage ? <div className="sw-blocked" role="status"><strong>{route.title}</strong><p>{blockMessage}</p><button onClick={() => interact(route.id)}>Retry assigned route</button></div> : null}
                 {overview ? <div className="sw-slices">{slices.map((src, index) => <img key={index} src={src} alt={`${route.title}, viewport slice ${index + 1}`} />)}</div> : null}
                 {(!focused || overview) && !blockMessage ? <button className="sw-focus-shield" aria-label={`Focus ${route.title}`} onClick={() => interact(route.id)}><span>Focus {route.title}</span></button> : null}
+                {!overview && !blockMessage && (state.selectionMode !== 'none' || state.selection?.panelId === route.id) ? <ContextOverlay id={route.id} api={runtime.api} state={state} frame={runtime.frames.get(route.id)} onError={setError} /> : null}
               </div>
             </section>;
           })}
         </div>
         {!state.visible.length ? <p className="sw-empty">Select routes to compose the wall.</p> : null}
       </main>
-      <aside className="sw-styles" style={{ display: state.rightOpen ? undefined : 'none' }} aria-label="Stylesheet workspace"><StylesPanel adapter={runtime.api.styles} subscribe={runtime.api.subscribe} /></aside>
+      <aside className="sw-styles" style={{ display: state.rightOpen ? undefined : 'none' }} aria-label="Stylesheet workspace"><StylesPanel api={runtime.api} /></aside>
     </div>
+    {promptOpen && <section className="sw-prompt" aria-label="Codex prompt window">
+      <p className="sw-hint">{state.selection ? `${state.selection.kind} selection on ${state.selection.route}` : `Current page: ${state.currentRoute}`} · Sends page, viewport, shared state, history and style context to Codex.</p>
+      <form onSubmit={async event => {
+        event.preventDefault(); if (promptBusy) return;
+        setPromptBusy(true); setPromptOutput('Running Codex…');
+        try { const result = await runtime.api.executePrompt(instruction); setPromptOutput(`${result.status}: ${result.output}`); }
+        catch (failure) { setPromptOutput(String(failure)); }
+        finally { setPromptBusy(false); }
+      }}><textarea aria-label="Instruction for Codex" placeholder="Make this section visually quieter…" value={instruction} onChange={event => setInstruction(event.target.value)} maxLength={16000} /><button disabled={promptBusy || !instruction.trim()}>{promptBusy ? 'Running…' : 'Send to Codex'}</button></form>
+      <pre role="status">{promptOutput}</pre>
+    </section>}
     <footer className="sw-footer">Focus: {state.currentRoute || 'none'} · {state.viewport.width} × {state.viewport.height} CSS px · Drag canvas to pan · Ctrl + wheel to zoom</footer>
   </div>;
 }
