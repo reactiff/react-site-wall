@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "routes": [
+    { "id": "home", "title": "Home", "path": "/", "group": "Explore" },
+    { "id": "shop", "title": "Shop", "path": "/shop", "group": "Explore" },
+    { "id": "story", "title": "Long story", "path": "/story", "group": "Explore" },
+    { "id": "login", "title": "Login", "path": "/login", "group": "Account" },
+    { "id": "account", "title": "Account", "path": "/account", "group": "Account" },
+    { "id": "checkout", "title": "Checkout", "path": "/checkout", "group": "Purchase", "included": false },
+    { "id": "thanks", "title": "Thank you", "path": "/thanks", "group": "Purchase", "included": false },
+    { "id": "redirect", "title": "Legacy redirect", "path": "/redirect", "group": "Redirects", "included": false, "metadata": { "redirectTo": "/shop" } }
+  ]
+}

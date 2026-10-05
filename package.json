@@ -1,6 +1,38 @@
 {
+  "name": "react-site-wall",
+  "version": "0.1.0",
+  "description": "A shared spatial development workspace for React applications",
+  "type": "module",
+  "files": ["dist", "bin", "README.md", "REQUIREMENTS.md"],
+  "exports": {
+    ".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"},
+    "./server": {"types": "./dist/server.d.ts", "import": "./dist/server.js"},
+    "./styles.css": "./dist/styles.css"
+  },
+  "bin": {"sitewall": "./bin/sitewall.mjs"},
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-css.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:browser": "node tests/browser.mjs",
+    "demo": "node examples/server.mjs",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {"react": ">=18", "react-dom": ">=18"},
   "dependencies": {
+    "html2canvas": "^1.4.1",
     "@xog/agentic": "^0.1.2",
     "@xog/creative": "^0.1.2"
-  }
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.9.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "esbuild": "^0.25.0",
+    "@playwright/test": "^1.55.0"
+  },
+  "engines": {"node": ">=20"}
 }

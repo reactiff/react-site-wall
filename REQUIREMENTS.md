@@ -640,6 +640,7 @@ This specification intentionally does not prescribe:
 - component architecture;
 - styling;
 - visual design;
+- dark mode preferred
 - specific control layouts;
 - specific npm dependencies.
 

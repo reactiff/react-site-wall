@@ -42,6 +42,8 @@ Desktop.ini
 *.tmp
 *.temp
 .cache/
+.demo/
+.artifacts/
 
 # Vercel
 .vercel/
