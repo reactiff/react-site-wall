@@ -2,6 +2,9 @@ import { readPersistent, writePersistent } from './persistence.js';
 import { normalizePath, validateManifest } from './manifest.js';
 import { devices, type RouteManifest, type WallEvent, type WallState } from './types.js';
 
+const persistentEvent = (event: WallEvent) => !event.type.startsWith('prompt-') &&
+  !['executePrompt', 'stopPrompt'].includes(String((event.detail as { action?: string; name?: string } | null)?.action ?? (event.detail as { name?: string } | null)?.name ?? ''));
+
 /** Route ownership is independent of iframe location and rendering. */
 export class WallController {
   private state: WallState;
@@ -35,7 +38,7 @@ export class WallController {
       this.state = { ...this.state, ...patch };
     }
     const history = readPersistent<WallEvent[]>(wallPath, 'events');
-    if (Array.isArray(history)) { this.log = history.filter(event => event && Number.isFinite(event.sequence) && typeof event.type === 'string').slice(-500); this.sequence = this.log.at(-1)?.sequence ?? 0; }
+    if (Array.isArray(history)) { this.log = history.filter(event => event && Number.isFinite(event.sequence) && typeof event.type === 'string' && persistentEvent(event)).slice(-500); this.sequence = this.log.at(-1)?.sequence ?? 0; }
   }
   snapshot = (): WallState => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -46,7 +49,7 @@ export class WallController {
     this.log.push(event);
     if (this.log.length > 500) this.log.shift();
     this.observers.forEach(fn => fn(event));
-    writePersistent(this.wallPath, 'events', () => this.log);
+    writePersistent(this.wallPath, 'events', () => this.log.filter(persistentEvent));
   }
   update(patch: Partial<WallState>): void {
     this.state = { ...this.state, ...patch };

@@ -1,3 +1,4 @@
+import { darkHighlightStyle } from './editor-theme.js';
 import { readPersistent, writePersistent } from './persistence.js';
 import { startTransition, useEffect, useRef, useState } from 'react';
 import { EditorState, Prec, StateEffect } from '@codemirror/state';
@@ -5,7 +6,7 @@ import { EditorView, keymap } from '@codemirror/view';
 import { css, cssLanguage, cssCompletionSource } from '@codemirror/lang-css';
 import { autocompletion, completionKeymap, type CompletionSource } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { defaultHighlightStyle, HighlightStyle, syntaxHighlighting, bracketMatching } from '@codemirror/language';
+import { syntaxHighlighting, bracketMatching } from '@codemirror/language';
 import { format } from 'prettier/standalone';
 import * as postcss from 'prettier/plugins/postcss';
 import type { SiteWallAPI, Stylesheet } from './types.js';
@@ -39,8 +40,6 @@ function step(view: EditorView, delta: number) {
   view.dispatch({ changes: { from: change.from, to: change.to, insert: change.value }, selection: { anchor: change.from + change.value.length }, userEvent: 'input' });
   return true;
 }
-const palette: Record<string, string> = { '#708': '#c586c0', '#219': '#569cd6', '#164': '#b5cea8', '#a11': '#ce9178', '#00c': '#9cdcfe', '#05a': '#dcdcaa', '#085': '#4ec9b0', '#a50': '#d7ba7d', '#940': '#d4d4d4', '#f00': '#f48771' };
-const darkHighlightStyle = HighlightStyle.define(defaultHighlightStyle.specs.map(spec => typeof spec.color === 'string' ? { ...spec, color: palette[spec.color] ?? '#d4d4d4' } : spec));
 const selectorCache = new Map<string, string>();
 function canonicalSelector(selector: string): string {
   const cached = selectorCache.get(selector); if (cached) return cached;

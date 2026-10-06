@@ -7,6 +7,15 @@ import type { ContextSelection, PromptAdapter, PromptContext, SelectionRectangle
 import { captureSelection, sanitizeContext } from './selection.js';
 import { inspectStyleContextAsync, applyStylesheet, restoreStylesheets } from './style-context.js';
 
+function promptWait<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const cancel = () => reject(signal.reason);
+    if (signal.aborted) { void work.catch(() => {}); reject(signal.reason); return; }
+    signal.addEventListener('abort', cancel, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', cancel));
+  });
+}
+
 export class WallRuntime {
   readonly frames = new Map<string, HTMLIFrameElement>();
   canvas?: HTMLElement;
@@ -20,6 +29,7 @@ export class WallRuntime {
   private sharedQueue = Promise.resolve();
   private captureQueue: Promise<unknown> = Promise.resolve();
   private captureAbort = new AbortController();
+  private promptOperation?: AbortController;
   private overlays = new Map<string, string>();
   private contextHistory: WallEvent[] = [];
   private scrollPositions: Record<string, { x: number; y: number }> = {};
@@ -91,12 +101,29 @@ export class WallRuntime {
       executePrompt: instruction => action('executePrompt', async () => {
         if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > 20000) throw new Error('Enter an instruction of at most 20000 characters');
         if (!this.prompts) throw new Error('No development Codex prompt adapter configured');
-        const context = await this.promptContext();
-        controller.emit('prompt-start', { panelId: context.selection?.panelId ?? context.wall.focused });
-        const result = await this.prompts.execute(instruction, context);
-        controller.emit('prompt-result', result);
-        return result;
+        if (this.promptOperation) throw new Error('A Codex request is already running');
+        const operation = new AbortController(); this.promptOperation = operation;
+        controller.emit('prompt-begin', { instruction });
+        try {
+          const context = await promptWait(this.promptContext(), operation.signal);
+          operation.signal.throwIfAborted();
+          controller.emit('prompt-start', { panelId: context.selection?.panelId ?? context.wall.focused });
+          const result = await promptWait(this.prompts.execute(instruction, context, { signal: operation.signal }), operation.signal);
+          operation.signal.throwIfAborted();
+          controller.emit('prompt-result', result);
+          return result;
+        } catch (error) {
+          controller.emit('prompt-failure', { stopped: operation.signal.aborted, message: operation.signal.aborted ? 'Stopped.' : String(error) });
+          throw error;
+        } finally { if (this.promptOperation === operation) this.promptOperation = undefined; }
       }),
+      stopPrompt: async () => {
+        const operation = this.promptOperation;
+        if (!operation) return;
+        operation.abort();
+        await this.prompts?.cancel?.();
+        controller.emit('prompt-stopped', {});
+      },
       inspect: id => action('inspect', async () => {
         await this.navigationQueue;
         const panelId = id ?? this.focused();

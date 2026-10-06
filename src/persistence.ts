@@ -7,6 +7,11 @@ export function readPersistent<T>(scope: string, key: string): T | undefined {
   try { if (typeof localStorage !== 'undefined') { const value = localStorage.getItem(storageKey(scope, key)); if (value) return JSON.parse(value) as T; } } catch { /* Disabled, expired or full storage. */ }
   return undefined;
 }
+export function removePersistent(scope: string, key: string): void {
+  const name = storageKey(scope, key);
+  pending.delete(name);
+  try { localStorage.removeItem(name); } catch { /* Storage may be disabled. */ }
+}
 function flush() {
   clearTimeout(timer); timer = undefined;
   for (const [key, value] of pending) { try { localStorage.setItem(key, JSON.stringify(sanitizeContext(value()))); } catch { /* Keep the live session usable when storage is unavailable. */ } }

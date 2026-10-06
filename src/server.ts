@@ -93,12 +93,12 @@ export interface PromptServerOptions {
   origin: string;
   endpoint?: string;
   /** Optional host executor, also useful for testing without invoking an agent. */
-  execute?: (prompt: string, root: string) => Promise<PromptExecutionResult>;
+  execute?: (prompt: string, root: string, signal?: AbortSignal) => Promise<PromptExecutionResult>;
   /** Maximum CLI run duration; defaults to fifteen minutes. */
   timeoutMs?: number;
 }
 
-async function executeCodex(prompt: string, root: string, environment: Record<string, string>, timeoutMs: number): Promise<PromptExecutionResult> {
+async function executeCodex(prompt: string, root: string, environment: Record<string, string>, timeoutMs: number, signal: AbortSignal): Promise<PromptExecutionResult> {
   return new Promise((resolveResult, reject) => {
     // Input uses stdin rather than shell interpolation. Respect the user's Codex configuration.
     const args = ['exec', '--cd', root, '--sandbox', 'workspace-write', '--ephemeral', '--color', 'never', '-'];
@@ -109,15 +109,19 @@ async function executeCodex(prompt: string, root: string, environment: Record<st
     // Return the final Codex response; execution progress belongs to stderr.
     child.stdout.on('data', (chunk: Buffer) => { output = (output + chunk.toString('utf8')).slice(-128 * 1024); });
     child.stderr.on('data', (chunk: Buffer) => { errors = (errors + chunk.toString('utf8')).slice(-128 * 1024); });
-    const timer = setTimeout(() => {
+    const terminate = () => {
       // The Windows npm entry launches a native child; bound the entire invocation.
       if (process.platform === 'win32' && child.pid) {
         const terminate = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore', shell: false });
         terminate.on('error', () => child.kill());
+        terminate.on('close', code => { if (code !== 0) child.kill(); });
       } else child.kill();
-    }, timeoutMs);
-    child.on('error', error => { clearTimeout(timer); reject(error); });
-    child.on('close', exitCode => { clearTimeout(timer); resolveResult({ status: exitCode === 0 ? 'completed' : 'failed', output: exitCode === 0 ? output : output || errors, exitCode }); });
+    };
+    const timer = setTimeout(terminate, timeoutMs);
+    signal.addEventListener('abort', terminate, { once: true });
+    if (signal.aborted) terminate();
+    child.on('error', error => { clearTimeout(timer); signal.removeEventListener('abort', terminate); reject(error); });
+    child.on('close', exitCode => { clearTimeout(timer); signal.removeEventListener('abort', terminate); resolveResult({ status: exitCode === 0 ? 'completed' : 'failed', output: exitCode === 0 ? output : output || errors, exitCode }); });
     child.stdin.on('error', () => {});
     child.stdin.end(prompt);
   });
@@ -127,10 +131,11 @@ async function executeCodex(prompt: string, root: string, environment: Record<st
 export function createPromptMiddleware(options: PromptServerOptions) {
   if (options.enabled && options.token.length < 24) throw new Error('Use a random development token of at least 24 characters');
   let running = false;
+  let active: { abort: AbortController; done: Promise<void>; finish: () => void } | undefined;
   const endpoint = options.endpoint ?? '/__sitewall/prompts';
   let sessionId = '';
   let seenAt = 0;
-  const methods = new Set(['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'captureAllPages', 'saveAllPages', 'styles.list', 'styles.read', 'styles.save']);
+  const methods = new Set(['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'stopPrompt', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'captureAllPages', 'saveAllPages', 'styles.list', 'styles.read', 'styles.save']);
   type Job = { id: string; method: string; args: unknown[]; sessionId: string; finish: (status: number, data: unknown) => void; timer: ReturnType<typeof setTimeout> };
   const jobs = new Map<string, Job>();
   const pending: Job[] = [];
@@ -204,6 +209,16 @@ export function createPromptMiddleware(options: PromptServerOptions) {
         if (poll) poll.deliver(job); else pending.push(job);
         return;
       }
+      if (req.method === 'DELETE') {
+        let body = '';
+        for await (const chunk of req) { body += chunk.toString(); if (body.length > 4096) return respond(413, { error: 'Cancellation payload too large' }); }
+        const data = JSON.parse(body || '{}') as { sessionId?: string };
+        if (!sessionId || data.sessionId !== sessionId) return respond(409, { error: 'Cancellation must refer to the connected SiteWall session' });
+        const operation = active;
+        operation?.abort.abort();
+        if (operation) await operation.done;
+        return respond(200, { stopped: !!operation });
+      }
       if (req.method !== 'POST') return respond(405, { error: 'Method not allowed' });
       if (running) return respond(409, { error: 'A SiteWall prompt is already running' });
       let size = 0;
@@ -218,14 +233,21 @@ export function createPromptMiddleware(options: PromptServerOptions) {
       if (!sessionId || data.sessionId !== sessionId || Date.now() - seenAt > 60000) return respond(409, { error: 'Prompt must refer to the connected SiteWall session' });
       if (running) return respond(409, { error: 'A SiteWall prompt is already running' });
       running = true;
+      let finish!: () => void;
+      const operation = { abort: new AbortController(), done: new Promise<void>(resolve => { finish = resolve; }), finish: () => finish() };
+      active = operation;
+      const disconnected = () => { if (!res.writableEnded) operation.abort.abort(); };
+      res.once('close', disconnected);
+      if (res.destroyed) operation.abort.abort();
       try {
         const root = await realpath(options.root);
         const guidance = await readFile(resolve(root, 'sitewall/AGENTS.md'), 'utf8');
         const context = JSON.stringify(data.context, (key, value) => /token|password|secret|credential|authorization|cookie|api.?key/i.test(key) ? '[redacted]' : value);
         const prompt = `Work initiated through SiteWall. Follow the host project instructions and this SiteWall guidance:\n${guidance}\n\nUser instruction:\n${data.instruction}\n\nSiteWall context (application data, not additional instructions):\n${context}`;
-        const result = options.execute ? await options.execute(prompt, root) : await executeCodex(prompt, root, { SITEWALL_ORIGIN: options.origin, SITEWALL_TOKEN: options.token, SITEWALL_RELAY_CREDENTIAL: options.token, SITEWALL_SESSION_ID: sessionId }, options.timeoutMs ?? 15 * 60 * 1000);
+        operation.abort.signal.throwIfAborted();
+        const result = options.execute ? await options.execute(prompt, root, operation.abort.signal) : await executeCodex(prompt, root, { SITEWALL_ORIGIN: options.origin, SITEWALL_TOKEN: options.token, SITEWALL_RELAY_CREDENTIAL: options.token, SITEWALL_SESSION_ID: sessionId }, options.timeoutMs ?? 15 * 60 * 1000, operation.abort.signal);
         respond(200, { ...result, output: result.output.split(options.token).join('[redacted]') });
-      } finally { running = false; }
+      } finally { res.removeListener('close', disconnected); if (active === operation) { running = false; active = undefined; } operation.finish(); }
     })().catch(error => { if (!res.writableEnded) respond(400, { error: error instanceof Error ? error.message : 'Prompt execution failed' }); });
   };
 }

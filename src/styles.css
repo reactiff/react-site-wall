@@ -344,11 +344,6 @@
 .sw-context-overlay.sw-picking { pointer-events: auto; cursor: default; background: transparent; touch-action: none }
 .sw-selection-box { position: absolute; border: 2px solid #36d9ad; background: #36d9ad20; pointer-events: none; box-shadow: 0 0 0 1px #071c16 }
 .sw-selection-box span { position: absolute; top: 0; left: 0; background: #14392f; color: #fff; font: 12px/1.5 system-ui; padding: 2px 5px; white-space: nowrap }
-.sw-prompt { border-top: 1px solid #414141; background: #1e1e1e; padding: 12px 16px; max-height: 35vh; overflow: auto }
-.sw-prompt form { display: flex; gap: 12px }
-.sw-prompt textarea { flex: 1; min-height: 70px; resize: vertical }
-.sw-prompt pre { white-space: pre-wrap; max-height: 140px; overflow: auto }
-.sw-style-file { margin-bottom: 16px; min-width: 0 }
 .sw-styles > [hidden] { display: none }
 .sw-style-file h3 { font-size: 12px; overflow-wrap: anywhere; margin: 12px 0 6px; }
 .sw-code-editor { margin-top: 8px; border: 1px solid #414141; border-radius: 6px; overflow: hidden; }
@@ -383,3 +378,26 @@
 
 .sw-selecting .sw-focus-shield { background: transparent !important; }
 .sw-selecting .sw-focus-shield span { display: none; }
+
+/* Codex uses the same right-sidebar resize handle as Styles. */
+.sw-codex { flex: none; min-width: 0; min-height: 0; height: 100%; overflow: hidden; flex-direction: column; background: #1e1e1e; border-left: 1px solid #3c3c3c; }
+.sw-codex-toolbar { display: flex; align-items: center; gap: 3px; flex: none; height: 28px; padding: 0 4px; border-bottom: 1px solid #3c3c3c; }
+.sw-codex-toolbar strong { font-size: 11px; margin-right: auto; }
+.sw-codex-toolbar button { font-size: 11px; padding: 1px 5px; margin: 0; border-radius: 0; }
+.sw-codex-context { flex: none; height: 22px; padding: 2px 5px; font-size: 10px; color: #ababab; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-bottom: 1px solid #333; }
+.sw-codex-activity { flex: none; width: 7px; height: 7px; margin: 0 3px; border-radius: 50%; background: #555; }
+.sw-codex-activity.sw-working { background: #6c6; animation: sw-codex-pulse 1s ease-in-out infinite; }
+.sw-codex-activity.sw-completed { background: #6c6; }
+.sw-codex-activity.sw-problem { background: #e9a34b; }
+@keyframes sw-codex-pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .sw-codex-activity.sw-working { animation: none; box-shadow: 0 0 4px #6c6; } }
+.sw-codex-history { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overflow-anchor: none; }
+.sw-codex-entry { border-bottom: 1px solid #333; min-width: 0; }
+.sw-codex-entry-label { font-size: 10px; padding: 2px 5px 0; color: #ababab; }
+.sw-codex-output-editor .cm-scroller { overflow: visible; }
+.sw-codex-output-editor .cm-editor { outline: none; }
+.sw-report-output .cm-scroller { font-family: system-ui, sans-serif !important; line-height: 1.5; }
+.sw-codex-prompt { flex: 0 1 auto; min-height: min(25px, var(--sw-prompt-max-height, 25px)); max-height: var(--sw-prompt-max-height); overflow: hidden; margin: 0; padding: 0; border-top: 1px solid #414141; }
+.sw-codex-prompt .cm-editor { outline: none; }
+.sw-codex-prompt .cm-scroller { overflow-y: auto; overflow-x: hidden; }
+.sw-codex .cm-content { overflow-wrap: anywhere; }

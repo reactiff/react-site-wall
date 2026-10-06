@@ -7,7 +7,10 @@ export function createPromptClient(options: { token: string; endpoint?: string; 
     try { sessionId = sessionStorage.getItem(key) ?? crypto.randomUUID(); sessionStorage.setItem(key, sessionId); }
     catch { sessionId = crypto.randomUUID(); }
   }
-  return { async saveCaptures(outputDir, captures) {
+  return { async cancel() {
+    const response = await fetch(options.endpoint ?? '/__sitewall/prompts', { method: 'DELETE', credentials: 'same-origin', headers, body: JSON.stringify({ sessionId }) });
+    if (!response.ok) throw new Error(`Could not stop Codex (${response.status}): ${await response.text()}`);
+  }, async saveCaptures(outputDir, captures) {
     const response = await fetch('/__sitewall/captures', {
       method: 'POST', credentials: 'same-origin', headers,
       body: JSON.stringify({ outputDir, captures }),
@@ -21,7 +24,7 @@ export function createPromptClient(options: { token: string; endpoint?: string; 
       const parts = method.split('.');
       const target = parts.length === 2 && parts[0] === 'styles' ? api.styles : api;
       const name = parts.length === 2 ? parts[1] : parts[0];
-      const allowed = ['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'captureAllPages', 'saveAllPages', 'styles.list', 'styles.read', 'styles.save'];
+      const allowed = ['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'stopPrompt', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'captureAllPages', 'saveAllPages', 'styles.list', 'styles.read', 'styles.save'];
       if (!allowed.includes(method)) throw new Error('Unsupported session command');
       const fn = (target as unknown as Record<string, (...args: unknown[]) => unknown>)[name];
       return fn(...args);
@@ -49,8 +52,8 @@ export function createPromptClient(options: { token: string; endpoint?: string; 
       }
     })();
     return () => abort.abort();
-  }, async execute(instruction, context) {
-    const response = await fetch(options.endpoint ?? '/__sitewall/prompts', { method: 'POST', credentials: 'same-origin', headers, body: JSON.stringify({ instruction, context, sessionId }) });
+  }, async execute(instruction, context, request) {
+    const response = await fetch(options.endpoint ?? '/__sitewall/prompts', { method: 'POST', credentials: 'same-origin', headers, signal: request?.signal, body: JSON.stringify({ instruction, context, sessionId }) });
     if (!response.ok) throw new Error(`Prompt request failed (${response.status}): ${await response.text()}`);
     return response.json() as Promise<PromptResult>;
   } };

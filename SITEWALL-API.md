@@ -48,6 +48,7 @@ Set `Content-Type: application/json` and `X-SiteWall-Token` from environment `SI
 | `clearSelection()` | Clear visible/captured selection; retains active element picking mode. |
 | `promptContext()` | Promise of complete `PromptContext` for current selection/focus. |
 | `executePrompt(instruction: string)` | Browser only; Promise of `{status: 'completed' \| 'failed', output: string, exitCode: number \| null}`. Runs Codex against host project with captured context; requires development prompt adapter. Nonblank instruction, max 20,000 characters. |
+| `stopPrompt()` | Promise; abort current context/request and interrupt the running Codex process through the authenticated development endpoint. Custom prompt adapters/executors must support cancellation via cancel/AbortSignal. |
 
 ## Configuration
 
@@ -93,3 +94,5 @@ const files = await api.saveAllPages('captures');
 ```
 
 Capture filenames: `/` -> `home.png`, `/watches` -> `watches.png`, `/watch/model-1` -> `watch-model-1.png`. Invalid filesystem characters and Windows reserved names are sanitized. Query/hash variants, long names and normalized collisions receive stable hash suffixes. `captureAllPages()` itself never writes files.
+
+Codex sidebar conversation/input/activity state is ephemeral. New Session clears its history and input, cancelling active work; it does not reset shared wall state or the human/agent relay. Enter sends; Ctrl+Enter inserts a newline.

@@ -1,5 +1,7 @@
+import { CodexPanel } from './CodexPanel.js';
+import { PanelResizeHandle } from './PanelResizeHandle.js';
 import { useCanvasControls } from './canvas-controls.js';
-import { readPersistent, usePersistentState, writePersistent } from './persistence.js';
+import { readPersistent, removePersistent, usePersistentState, writePersistent } from './persistence.js';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { WallController } from './controller.js';
 import { WallRuntime } from './runtime.js';
@@ -36,10 +38,9 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, prompt
   const [dimensions, setDimensions] = useState({ width: String(state.viewport.width), height: String(state.viewport.height) });
   useEffect(() => { setDimensions({ width: String(state.viewport.width), height: String(state.viewport.height) }); }, [state.viewport.width, state.viewport.height]);
   const [error, setError] = useState('');
-  const [instruction, setInstruction] = usePersistentState(wallPath, 'prompt-instruction', '');
-  const [promptOutput, setPromptOutput] = usePersistentState(wallPath, 'prompt-output', '');
-  const [promptBusy, setPromptBusy] = useState(false);
-  const [promptOpen, setPromptOpen] = usePersistentState(wallPath, 'prompt-open', false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [codexWidth, setCodexWidth] = usePersistentState(wallPath, 'codex-width', 360);
+  useEffect(() => { for (const key of ['prompt-instruction', 'prompt-output', 'prompt-open']) removePersistent(wallPath, key); }, [wallPath]);
   const [blocked, setBlocked] = useState<Record<string, string>>({});
   const [images, setImages] = useState<Record<string, string[]>>({});
   const [capturing, setCapturing] = useState(false);
@@ -55,7 +56,7 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, prompt
     const unobserve = controller.observe(event => {
       if (event.type === 'ready') redrawSelection(value => value + 1);
       if (event.type === 'scroll' && controller.snapshot().selection) redrawSelection(value => value + 1);
-      if (event.type === 'error' || event.type === 'unmapped-navigation' || event.type === 'external-navigation') setError(JSON.stringify(event.detail));
+      if ((event.type === 'error' && (event.detail as { action?: string })?.action !== 'executePrompt') || event.type === 'unmapped-navigation' || event.type === 'external-navigation') setError(JSON.stringify(event.detail));
       if (event.type === 'stylesheet' || event.type === 'shared-state' || event.type === 'navigation-complete') {
         setImages({});
         setRefreshRevision(value => value + 1);
@@ -199,42 +200,11 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, prompt
         </div>
         {!state.visible.length ? <p className="sw-empty">Select routes to compose the wall.</p> : null}
       </main>
-      {state.rightOpen && <StylesResizeHandle controller={controller} />}<aside className="sw-styles" style={{ width: state.stylesWidth, display: state.rightOpen ? undefined : 'none' }} aria-label="Stylesheet workspace"><StylesPanel api={runtime.api} /></aside>
+      {state.rightOpen && <PanelResizeHandle label="Resize styles panel" width={state.stylesWidth} onResize={width => controller.configure({ stylesWidth: width })} />}<aside className="sw-styles" style={{ width: state.stylesWidth, display: state.rightOpen ? undefined : 'none' }} aria-label="Stylesheet workspace"><StylesPanel api={runtime.api} /></aside>
+      {promptOpen && <PanelResizeHandle label="Resize Codex panel" width={codexWidth} onResize={setCodexWidth} />}
+      <CodexPanel api={runtime.api} width={codexWidth} open={promptOpen} />
     </div>
-    {promptOpen && <section className="sw-prompt" aria-label="Codex prompt window">
-      <p className="sw-hint">{state.selection ? `${state.selection.kind} selection on ${state.selection.route}` : `Current page: ${state.currentRoute}`} · Sends page, viewport, shared state, history and style context to Codex.</p>
-      <form onSubmit={async event => {
-        event.preventDefault(); if (promptBusy) return;
-        setPromptBusy(true); setPromptOutput('Running Codex…');
-        try { const result = await runtime.api.executePrompt(instruction); setPromptOutput(`${result.status}: ${result.output}`); }
-        catch (failure) { setPromptOutput(String(failure)); }
-        finally { setPromptBusy(false); }
-      }}><textarea aria-label="Instruction for Codex" placeholder="Make this section visually quieter…" value={instruction} onChange={event => setInstruction(event.target.value)} maxLength={16000} /><button disabled={promptBusy || !instruction.trim()}>{promptBusy ? 'Running…' : 'Send to Codex'}</button></form>
-      <pre role="status">{promptOutput}</pre>
-    </section>}
     <footer className="sw-footer">Focus: {state.currentRoute || 'none'} · {state.viewport.width} × {state.viewport.height} CSS px · Drag canvas to pan · Ctrl + wheel to zoom</footer>
   </div>;
 }
 
-function StylesResizeHandle({ controller }: { controller: WallController }) {
-  const resize = useRef<{ x: number; width: number; current: number; panel: HTMLElement; frame: number } | null>(null);
-  useEffect(() => () => { if (resize.current) cancelAnimationFrame(resize.current.frame); }, []);
-  const finish = () => {
-    const value = resize.current; if (!value) return;
-    cancelAnimationFrame(value.frame); resize.current = null;
-    controller.configure({ stylesWidth: value.current });
-  };
-  return <div className="sw-styles-resizer" role="separator" aria-label="Resize styles panel" aria-orientation="vertical" aria-valuemin={200} aria-valuemax={1200} aria-valuenow={controller.snapshot().stylesWidth} tabIndex={0} onKeyDown={event => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-    event.preventDefault(); controller.configure({ stylesWidth: Math.max(200, Math.min(1200, controller.snapshot().stylesWidth + (event.key === 'ArrowLeft' ? 16 : -16))) });
-  }} onPointerDown={event => {
-    if (event.button !== 0) return;
-    const panel = event.currentTarget.nextElementSibling as HTMLElement;
-    event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
-    resize.current = { x: event.clientX, width: controller.snapshot().stylesWidth, current: controller.snapshot().stylesWidth, panel, frame: 0 };
-  }} onPointerMove={event => {
-    const value = resize.current; if (!value) return;
-    value.current = Math.max(200, Math.min(1200, window.innerWidth - 100, value.width + value.x - event.clientX));
-    if (!value.frame) value.frame = requestAnimationFrame(() => { value.frame = 0; value.panel.style.width = `${value.current}px`; });
-  }} onPointerUp={finish} onPointerCancel={finish} />;
-}

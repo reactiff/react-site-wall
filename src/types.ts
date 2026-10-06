@@ -83,6 +83,7 @@ export interface SiteWallAPI {
   inspectSelection(): ContextSelection | null;
   promptContext(): Promise<PromptContext>;
   executePrompt(instruction: string): Promise<PromptResult>;
+  stopPrompt(): Promise<void>;
   inspect(id?: string): Promise<PageObservation>;
   click(selector: string): Promise<void>;
   type(selector: string, value: string): Promise<void>;
@@ -116,7 +117,8 @@ export interface PageCapture { id: string; route: string; image: string }
 export interface SavedPageCapture { id: string; route: string; path: string }
 export interface CapturePersistenceAdapter { saveCaptures(outputDir: string, captures: PageCapture[]): Promise<SavedPageCapture[]> }
 export interface PromptAdapter extends Partial<CapturePersistenceAdapter> {
-  execute(instruction: string, context: PromptContext): Promise<PromptResult>;
+  execute(instruction: string, context: PromptContext, options?: { signal?: AbortSignal }): Promise<PromptResult>;
+  cancel?(): Promise<void>;
   /** Connect an authenticated agent transport to this exact human session. */
   attach?(api: SiteWallAPI): () => void;
 }
