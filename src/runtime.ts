@@ -1,3 +1,4 @@
+import { AgentSession } from './agent-session.js';
 import { readPersistent, writePersistent } from './persistence.js';
 import { getPageBridge, type PageBridge } from './bridge.js';
 import { capturePage, stitchPageSlices } from './capture.js';
@@ -42,6 +43,7 @@ export class WallRuntime {
       catch (error) { controller.emit('error', { action: name, message: String(error) }); throw error; }
     };
     this.api = {
+      agent: new AgentSession((type, detail) => controller.emit(type, detail), () => controller.snapshot().selection),
       getState: () => structuredClone(controller.snapshot()),
       events: controller.events,
       subscribe: controller.observe,
@@ -364,6 +366,7 @@ export class WallRuntime {
     return () => {
       this.closed = true;
       history();
+      this.api.agent.reset();
       detachPrompts?.();
       this.captureAbort.abort();
       window.removeEventListener('sitewall:page', page);

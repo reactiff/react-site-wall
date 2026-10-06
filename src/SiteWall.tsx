@@ -1,4 +1,4 @@
-import { CodexPanel } from './CodexPanel.js';
+import { AgentPanel } from './AgentPanel.js';
 import { PanelResizeHandle } from './PanelResizeHandle.js';
 import { useCanvasControls } from './canvas-controls.js';
 import { readPersistent, removePersistent, usePersistentState, writePersistent } from './persistence.js';
@@ -39,7 +39,7 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, prompt
   useEffect(() => { setDimensions({ width: String(state.viewport.width), height: String(state.viewport.height) }); }, [state.viewport.width, state.viewport.height]);
   const [error, setError] = useState('');
   const [promptOpen, setPromptOpen] = useState(false);
-  const [codexWidth, setCodexWidth] = usePersistentState(wallPath, 'codex-width', 360);
+  const [agentWidth, setAgentWidth] = usePersistentState(wallPath, 'codex-width', 360);
   useEffect(() => { for (const key of ['prompt-instruction', 'prompt-output', 'prompt-open']) removePersistent(wallPath, key); }, [wallPath]);
   const [blocked, setBlocked] = useState<Record<string, string>>({});
   const [images, setImages] = useState<Record<string, string[]>>({});
@@ -147,7 +147,7 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, prompt
         <button type="submit">Go</button>
       </form>
       <span>{state.visible.length} pages</span>
-      <button aria-expanded={promptOpen} onClick={() => setPromptOpen(value => !value)}>Prompt Codex</button>
+      <button aria-expanded={promptOpen} onClick={() => setPromptOpen(value => !value)}>Prompt Agent</button>
       <button aria-label="Toggle styles" aria-expanded={state.rightOpen} onClick={() => controller.configure({ rightOpen: !state.rightOpen })}>Styles ◧</button>
     </header>
     {error ? <div role="alert" className="sw-error">{error}<button onClick={() => setError('')}>Dismiss</button></div> : null}
@@ -201,8 +201,8 @@ function Workspace({ manifest, wallPath = '/sitewall', styles = noStyles, prompt
         {!state.visible.length ? <p className="sw-empty">Select routes to compose the wall.</p> : null}
       </main>
       {state.rightOpen && <PanelResizeHandle label="Resize styles panel" width={state.stylesWidth} onResize={width => controller.configure({ stylesWidth: width })} />}<aside className="sw-styles" style={{ width: state.stylesWidth, display: state.rightOpen ? undefined : 'none' }} aria-label="Stylesheet workspace"><StylesPanel api={runtime.api} /></aside>
-      {promptOpen && <PanelResizeHandle label="Resize Codex panel" width={codexWidth} onResize={setCodexWidth} />}
-      <CodexPanel api={runtime.api} width={codexWidth} open={promptOpen} />
+      {promptOpen && <PanelResizeHandle label="Resize Agent panel" width={agentWidth} onResize={setAgentWidth} />}
+      <AgentPanel api={runtime.api} width={agentWidth} open={promptOpen} />
     </div>
     <footer className="sw-footer">Focus: {state.currentRoute || 'none'} · {state.viewport.width} × {state.viewport.height} CSS px · Drag canvas to pan · Ctrl + wheel to zoom</footer>
   </div>;

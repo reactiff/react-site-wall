@@ -2,8 +2,10 @@ import { readPersistent, writePersistent } from './persistence.js';
 import { normalizePath, validateManifest } from './manifest.js';
 import { devices, type RouteManifest, type WallEvent, type WallState } from './types.js';
 
-const persistentEvent = (event: WallEvent) => !event.type.startsWith('prompt-') &&
+const persistentEvent = (event: WallEvent) => !event.type.startsWith('prompt-') && !event.type.startsWith('agent-') && event.type !== 'selection' &&
   !['executePrompt', 'stopPrompt'].includes(String((event.detail as { action?: string; name?: string } | null)?.action ?? (event.detail as { name?: string } | null)?.name ?? ''));
+const persistedEvent = (event: WallEvent): WallEvent => event.type === 'workspace'
+  ? { ...event, detail: { ...(event.detail as WallState), selection: null } } : event;
 
 /** Route ownership is independent of iframe location and rendering. */
 export class WallController {
@@ -34,11 +36,12 @@ export class WallController {
       patch.focused = ids.includes(saved.focused ?? '') ? saved.focused : ids[0] ?? null;
       const route = routes.find(route => route.id === patch.focused);
       patch.currentRoute = route && saved.currentRoute?.split('#')[0] === route.path ? saved.currentRoute : route?.path ?? '';
-      if (saved.selection && typeof saved.selection.route === 'string' && routes.some(route => route.id === saved.selection!.panelId && route.path === saved.selection!.route.split('#')[0])) patch.selection = saved.selection;
       this.state = { ...this.state, ...patch };
     }
     const history = readPersistent<WallEvent[]>(wallPath, 'events');
-    if (Array.isArray(history)) { this.log = history.filter(event => event && Number.isFinite(event.sequence) && typeof event.type === 'string' && persistentEvent(event)).slice(-500); this.sequence = this.log.at(-1)?.sequence ?? 0; }
+    if (Array.isArray(history)) { this.log = history.filter(event => event && Number.isFinite(event.sequence) && typeof event.type === 'string' && persistentEvent(event)).map(persistedEvent).slice(-500); this.sequence = this.log.at(-1)?.sequence ?? 0; }
+    // Migrate previously stored selections without dropping unrelated wall state.
+    if (saved?.selection) writePersistent(this.wallPath, 'wall', () => ({ ...this.state, selection: null }));
   }
   snapshot = (): WallState => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -49,13 +52,13 @@ export class WallController {
     this.log.push(event);
     if (this.log.length > 500) this.log.shift();
     this.observers.forEach(fn => fn(event));
-    writePersistent(this.wallPath, 'events', () => this.log.filter(persistentEvent));
+    writePersistent(this.wallPath, 'events', () => this.log.filter(persistentEvent).map(persistedEvent));
   }
   update(patch: Partial<WallState>): void {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach(fn => fn());
     this.emit('workspace', structuredClone(this.state));
-    writePersistent(this.wallPath, 'wall', () => this.state);
+    writePersistent(this.wallPath, 'wall', () => ({ ...this.state, selection: null }));
   }
   route(id: string) {
     const route = this.state.routes.find(r => r.id === id);

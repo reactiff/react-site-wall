@@ -8,3 +8,5 @@ export type { StyleContext, StyleSource, StyleDeclaration, MatchedStyleRule } fr
 export { validateManifest, normalizePath } from './manifest.js';
 export { devices } from './types.js';
 export type { RouteManifest, PageRoute, Viewport, WallState, WallEvent, SharedStateAdapter, StylesheetAdapter, Stylesheet, SiteWallAPI, PageObservation } from './types.js';
+
+export type { AgentAPI, AgentCard, AgentChoice, AgentArtifact, AgentResponse, AgentOwnerInput, AgentInteraction, AgentSnapshot } from './types.js';

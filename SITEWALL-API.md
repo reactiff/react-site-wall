@@ -12,7 +12,7 @@ For Codex launched through SiteWall, POST to `SITEWALL_ORIGIN + '/__sitewall/ses
 { "sessionId": "<SITEWALL_SESSION_ID>", "method": "inspect", "args": [] }
 ```
 
-Set `Content-Type: application/json` and `X-SiteWall-Token` from environment `SITEWALL_RELAY_CREDENTIAL` (fallback `SITEWALL_TOKEN`). Read credentials in code; never print or persist them. Response: `{ "result": ... }`; errors remain unresolved. All methods below support relay access except `subscribe` and `executePrompt`. Nested methods use `styles.list`, `styles.read`, `styles.save`. Environment credentials are supplied only to SiteWall-launched Codex processes.
+Set `Content-Type: application/json` and `X-SiteWall-Token` from environment `SITEWALL_RELAY_CREDENTIAL` (fallback `SITEWALL_TOKEN`). Read credentials in code; never print or persist them. Response: `{ "result": ... }`; errors remain unresolved. All methods below support relay access except `subscribe` and `executePrompt`. Nested methods use `styles.list`, `styles.read`, `styles.save`, and the documented `agent.*` relay methods. Environment credentials are supplied only to SiteWall-launched Codex processes.
 
 ## Methods
 
@@ -95,4 +95,38 @@ const files = await api.saveAllPages('captures');
 
 Capture filenames: `/` -> `home.png`, `/watches` -> `watches.png`, `/watch/model-1` -> `watch-model-1.png`. Invalid filesystem characters and Windows reserved names are sanitized. Query/hash variants, long names and normalized collisions receive stable hash suffixes. `captureAllPages()` itself never writes files.
 
-Codex sidebar conversation/input/activity state is ephemeral. New Session clears its history and input, cancelling active work; it does not reset shared wall state or the human/agent relay. Enter sends; Ctrl+Enter inserts a newline.
+Agent panel conversation/input/activity, queued owner input, cards, and active reference selections are ephemeral. New Session clears its history and input, cancelling active work; it does not reset shared wall state or the human/agent relay. Enter sends; Ctrl+Enter inserts a newline.
+
+
+## Agent interaction API
+
+`api.agent` is a generic, in-memory interaction surface. It contains no Creative state machine and performs no Git operations. Reload clears it; unrelated wall state keeps its existing persistence.
+
+| Method | Behavior |
+| --- | --- |
+| `snapshot()` | Current inputs, interactions, and status. Metadata is agent context, not owner UI. |
+| `enqueue(instruction)` | Browser only. Enqueue owner input in arrival order; returns its id/sequence and captures the current selection as optional `reference`. |
+| `takeOwnerInput()` | Relay. Retrieve queued and delivered-but-unacknowledged inputs at a safe boundary, marking them delivered. |
+| `acknowledge(id, message?)` | Relay. Mark a delivered input incorporated; optional acknowledgement appears in history. |
+| `requestInteraction(card)` | Relay. Present an owner card and show Waiting for you. Returns immediately; does not block browser polling. |
+| `respond(response)` | Browser only. Submit structured owner intent to the same ordered inbox. |
+| `reportInteraction(cardId, {success, summary})` | Relay. Report actual outcome; submitted cards remain pending until this result. |
+| `setStatus(status)` | Relay. Publish concise activity text. |
+| `reset()` | Browser only. Clear Agent interaction state. |
+
+Relay example payload: `{sessionId, method: "agent.requestInteraction", args: [card]}`. The normal authenticated session transport applies. No method waits for human input inside a relay request. Pending cards are presented in arrival order. Closing a dialog leaves the card pending and exposes Respond in history, so the owner can use the prompt editor or Stop while deciding. A supplied owner-turn deadline continues while its dialog is dismissed. Agents poll the inbox at safe boundaries and before finishing, acknowledge incorporated directions, and report interaction results. Unacknowledged delivered input is returned again; agents must avoid repeating already executed actions. When an executor finishes with unread queued input, the panel starts one continuation for that queue batch. An owner response submitted after an executor finishes also starts a continuation. Stop suppresses automatic continuation; queued input stays visible. The existing `codex exec` executor is retained.
+
+Cards have `{id, type, title, summary}`. Types: `clarification`, `proposal`, `variants`, `implementation-approval`, `review`, `owner-turn`. Optional fields:
+
+- `implications`, `changes`: string arrays.
+- `choices`: `{id, title, description?, differentiators?, artifacts?}[]`.
+- `selection`: `one` (default, mutually exclusive) or `many`.
+- `allowText`: allow free-text answers (default true).
+- `artifacts`: `{title, url, kind: "image" | "preview" | "artifact"}[]`, also supported per choice. Supply browser-accessible HTTP(S), root-relative URLs, or raster image data URLs. Images are displayed; previews/artifacts open directly from the card. Do not send raw filesystem paths as owner instructions.
+- `canRevert`: expose review Revert only when supported.
+- `allowPass`, `deadline`: owner-turn pass behavior and optional absolute Unix-millisecond deadline. Deadline requires `allowPass: true`.
+- `metadata`: opaque agent/protocol context, including branch identity or operation context needed by a continuation; never presented as owner workflow instructions.
+
+Responses have `{cardId, action, selected?, text?}`. Actions are `answer`, `approve`, `reject`, `revise`, `select`, `implement`, `accept`, `revert`, `pass`. Revise requires text. Reject on implementation approval requires an answer to ?What should happen next??. Variant selection respects the cardinality and OK sends IDs. Review Accept requests merging the associated branch into master; Revert requests undoing the associated implementation. The agent owns both operations and reports success/failure with `reportInteraction`; sending an intent never claims that Git succeeded.
+
+The server supplies generic interaction guidance on every invocation, including hosts with older project-local guidance. Protocol adapters use this contract to request owner decisions without exposing folders, proposal paths, or protocol commands.

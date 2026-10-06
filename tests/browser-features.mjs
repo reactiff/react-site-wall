@@ -75,10 +75,10 @@ export async function verifyFeatures(page, api, route) {
   expect(region.rectangle.height).toBeCloseTo(150 / .65, 0);
   expect(region.surroundingElements.length).toBeGreaterThan(0);
   expect((await api('promptContext')).styles.region.length).toBeGreaterThan(0);
-  await page.getByRole('button', { name: 'Prompt Codex', exact: true }).click();
-  await page.getByLabel('Instruction for Codex').fill('Make this section visually quieter.');
-  await page.getByRole('button', { name: 'Send to Codex', exact: true }).click();
-  await expect(page.getByLabel('Codex prompt window').getByRole('status')).toContainText('completed: Simulated Codex execution');
+  await page.getByRole('button', { name: 'Prompt Agent', exact: true }).click();
+  await page.getByLabel('Instruction for Agent').fill('Make this section visually quieter.');
+  await page.getByLabel('Instruction for Agent').press('Enter');
+  await expect(page.getByLabel('Agent output history')).toContainText('Simulated Codex execution');
   const relayState = await page.evaluate(async () => {
     const response = await fetch('/__sitewall/session', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SiteWall-Token': window.demoToken }, body: JSON.stringify({ method: 'getState', args: [] }) });
     if (!response.ok) throw new Error(await response.text());

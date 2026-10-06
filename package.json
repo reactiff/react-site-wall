@@ -29,7 +29,7 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-css.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "test:browser": "node tests/browser.mjs && node tests/css-inspection.mjs && node tests/capture-all-browser.mjs && node tests/panel-scroll-browser.mjs",
+    "test:browser": "node tests/browser.mjs && node tests/css-inspection.mjs && node tests/capture-all-browser.mjs && node tests/panel-scroll-browser.mjs && node tests/agent-browser.mjs",
     "test:css-browser": "node tests/css-inspection.mjs",
     "demo": "node examples/server.mjs",
     "prepack": "npm run build",

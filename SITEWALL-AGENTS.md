@@ -17,3 +17,6 @@ Use `saveAllPages(outputDir)` to persist those visible-page captures as PNG file
 - Never reproduce credentials or sensitive state in logs, responses, or persisted artifacts.
 
 Keep evolving SiteWall-specific guidance in this project-local file.
+
+
+Use the generic `agent.*` interaction API documented in SITEWALL-API.md. At safe boundaries and before finishing, retrieve `agent.takeOwnerInput()`, incorporate owner directions in order, and acknowledge them. Request owner decisions with `agent.requestInteraction(card)` rather than telling the owner to find files or type commands. Responses arrive through the inbox; report the actual result with `agent.reportInteraction`. Review Accept/Revert request agent-owned Git actions. Store necessary branch/operation context in card metadata for executor continuations. Owner-turn cards may supply a pass deadline. Keep protocol implementation outside SiteWall React components.

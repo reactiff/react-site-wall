@@ -1,12 +1,7 @@
 import type { PromptAdapter, PromptResult } from './types.js';
 export function createPromptClient(options: { token: string; endpoint?: string; sessionEndpoint?: string }): PromptAdapter {
   const headers = { 'Content-Type': 'application/json', 'X-SiteWall-Token': options.token };
-  let sessionId = '';
-  if (typeof window !== 'undefined') {
-    const key = `sitewall-session:${options.sessionEndpoint ?? '/__sitewall/session'}`;
-    try { sessionId = sessionStorage.getItem(key) ?? crypto.randomUUID(); sessionStorage.setItem(key, sessionId); }
-    catch { sessionId = crypto.randomUUID(); }
-  }
+  const sessionId = crypto.randomUUID();
   return { async cancel() {
     const response = await fetch(options.endpoint ?? '/__sitewall/prompts', { method: 'DELETE', credentials: 'same-origin', headers, body: JSON.stringify({ sessionId }) });
     if (!response.ok) throw new Error(`Could not stop Codex (${response.status}): ${await response.text()}`);
@@ -22,9 +17,9 @@ export function createPromptClient(options: { token: string; endpoint?: string; 
     const endpoint = options.sessionEndpoint ?? '/__sitewall/session';
     const invoke = async (method: string, args: unknown[]) => {
       const parts = method.split('.');
-      const target = parts.length === 2 && parts[0] === 'styles' ? api.styles : api;
+      const target = parts.length === 2 && parts[0] === 'styles' ? api.styles : parts.length === 2 && parts[0] === 'agent' ? api.agent : api;
       const name = parts.length === 2 ? parts[1] : parts[0];
-      const allowed = ['getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'stopPrompt', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'captureAllPages', 'saveAllPages', 'styles.list', 'styles.read', 'styles.save'];
+      const allowed = ['agent.snapshot', 'agent.takeOwnerInput', 'agent.acknowledge', 'agent.requestInteraction', 'agent.reportInteraction', 'agent.setStatus', 'getState', 'events', 'show', 'focus', 'navigate', 'configure', 'zoomAt', 'filterStyles', 'inspectStyles', 'setSelectionMode', 'selectElement', 'selectRegion', 'clearSelection', 'inspectSelection', 'promptContext', 'stopPrompt', 'inspect', 'click', 'type', 'scroll', 'capture', 'captureFullPage', 'captureAllPages', 'saveAllPages', 'styles.list', 'styles.read', 'styles.save'];
       if (!allowed.includes(method)) throw new Error('Unsupported session command');
       const fn = (target as unknown as Record<string, (...args: unknown[]) => unknown>)[name];
       return fn(...args);

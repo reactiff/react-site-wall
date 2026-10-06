@@ -93,6 +93,8 @@ test('prompt server guards execution and supplies host guidance and redacted sha
     assert.equal(received.cwd.toLowerCase(), root.toLowerCase());
     assert.match(received.prompt, /authoritative/);
     assert.match(received.prompt, /Reduce spacing here/);
+    assert.ok(received.prompt.startsWith('Reduce spacing here\n\n'), 'owner instruction remains first so protocol prefixes activate');
+    assert.match(received.prompt, /agent.takeOwnerInput/);
     assert.match(received.prompt, /\/cart/);
     assert.doesNotMatch(received.prompt, /secret-value/);
     finish();

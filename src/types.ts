@@ -84,6 +84,7 @@ export interface SiteWallAPI {
   promptContext(): Promise<PromptContext>;
   executePrompt(instruction: string): Promise<PromptResult>;
   stopPrompt(): Promise<void>;
+  agent: AgentAPI;
   inspect(id?: string): Promise<PageObservation>;
   click(selector: string): Promise<void>;
   type(selector: string, value: string): Promise<void>;
@@ -113,6 +114,42 @@ export interface PromptContext {
   styles: import('./style-context.js').StyleContext;
 }
 export interface PromptResult { status: 'completed' | 'failed'; output: string; exitCode: number | null }
+export interface AgentArtifact { title: string; url: string; kind: 'image' | 'preview' | 'artifact' }
+export interface AgentChoice { id: string; title: string; description?: string; differentiators?: string[]; artifacts?: AgentArtifact[] }
+export interface AgentCard {
+  id: string;
+  type: 'clarification' | 'proposal' | 'variants' | 'implementation-approval' | 'review' | 'owner-turn';
+  title: string;
+  summary: string;
+  implications?: string[];
+  changes?: string[];
+  choices?: AgentChoice[];
+  selection?: 'one' | 'many';
+  allowText?: boolean;
+  artifacts?: AgentArtifact[];
+  canRevert?: boolean;
+  /** Protocol supplies the deadline and whether passing is permitted. */
+  deadline?: number;
+  allowPass?: boolean;
+  /** Opaque to the interaction UI, including branch identifiers when needed. */
+  metadata?: Record<string, unknown>;
+}
+export interface AgentResponse { cardId: string; action: 'answer' | 'approve' | 'reject' | 'revise' | 'select' | 'implement' | 'accept' | 'revert' | 'pass'; selected?: string[]; text?: string }
+export interface AgentOwnerInput { id: string; sequence: number; time: number; instruction?: string; reference?: ContextSelection; response?: AgentResponse; state: 'queued' | 'delivered' | 'acknowledged'; acknowledgement?: string }
+export interface AgentInteraction { card: AgentCard; time: number; state: 'waiting' | 'submitted' | 'completed' | 'failed'; response?: AgentResponse; result?: string }
+export interface AgentSnapshot { inputs: AgentOwnerInput[]; interactions: AgentInteraction[]; status: string }
+export interface AgentAPI {
+  snapshot(): AgentSnapshot;
+  enqueue(instruction: string): AgentOwnerInput;
+  /** Call only at a safe execution boundary. Unacknowledged deliveries remain available. */
+  takeOwnerInput(): AgentOwnerInput[];
+  acknowledge(id: string, message?: string): void;
+  requestInteraction(card: AgentCard): void;
+  respond(response: AgentResponse): void;
+  reportInteraction(cardId: string, result: { success: boolean; summary: string }): void;
+  setStatus(status: string): void;
+  reset(): void;
+}
 export interface PageCapture { id: string; route: string; image: string }
 export interface SavedPageCapture { id: string; route: string; path: string }
 export interface CapturePersistenceAdapter { saveCaptures(outputDir: string, captures: PageCapture[]): Promise<SavedPageCapture[]> }
