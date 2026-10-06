@@ -1,0 +1,272 @@
+[
+  {
+    "id": "home",
+    "route": "/",
+    "path": "C:\\_codex\\projects\\_libs\\react-site-wall\\.creative\\sitewall\\captures\\session1\\home.png",
+    "viewport": {
+      "width": 393,
+      "height": 659
+    },
+    "image": {
+      "width": 387,
+      "height": 6451
+    },
+    "excludedScrollbarWidth": 6,
+    "scrollBefore": {
+      "x": 0,
+      "y": 0,
+      "height": 6451
+    },
+    "scrollAfter": {
+      "x": 0,
+      "y": 0,
+      "height": 6451
+    },
+    "segments": [
+      {
+        "scroller": "document",
+        "offset": 0,
+        "actual": 0,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 659,
+        "actual": 659,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 1318,
+        "actual": 1318,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 1977,
+        "actual": 1977,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 2636,
+        "actual": 2636,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 3295,
+        "actual": 3295,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 3954,
+        "actual": 3954,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 4613,
+        "actual": 4613,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 5272,
+        "actual": 5272,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 5931,
+        "actual": 5792,
+        "fullHeight": 6451,
+        "viewportHeight": 659,
+        "width": 387
+      }
+    ],
+    "visualVerification": {
+      "inspected": true,
+      "rightEdge": "No white scrollbar stripe; 6px gutter excluded without viewport reflow.",
+      "topBar": "Appears once.",
+      "imageFit": "Cover cropping and positioning retained.",
+      "joins": "Sequential content without overlapping menu bars."
+    },
+    "finalSliceHeight": 520
+  },
+  {
+    "id": "membership",
+    "route": "/membership",
+    "path": "C:\\_codex\\projects\\_libs\\react-site-wall\\.creative\\sitewall\\captures\\session1\\membership.png",
+    "viewport": {
+      "width": 393,
+      "height": 659
+    },
+    "image": {
+      "width": 387,
+      "height": 4105
+    },
+    "excludedScrollbarWidth": 6,
+    "scrollBefore": {
+      "x": 0,
+      "y": 667,
+      "height": 4105
+    },
+    "scrollAfter": {
+      "x": 0,
+      "y": 667,
+      "height": 4105
+    },
+    "segments": [
+      {
+        "scroller": "document",
+        "offset": 0,
+        "actual": 0,
+        "fullHeight": 4105,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 659,
+        "actual": 659,
+        "fullHeight": 4105,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 1318,
+        "actual": 1318,
+        "fullHeight": 4105,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 1977,
+        "actual": 1977,
+        "fullHeight": 4105,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 2636,
+        "actual": 2636,
+        "fullHeight": 4105,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 3295,
+        "actual": 3295,
+        "fullHeight": 4105,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 3954,
+        "actual": 3446,
+        "fullHeight": 4105,
+        "viewportHeight": 659,
+        "width": 387
+      }
+    ],
+    "visualVerification": {
+      "inspected": true,
+      "rightEdge": "No white scrollbar stripe; 6px gutter excluded without viewport reflow.",
+      "topBar": "Appears once.",
+      "imageFit": "Cover cropping and positioning retained.",
+      "joins": "Sequential content without overlapping menu bars."
+    },
+    "finalSliceHeight": 151
+  },
+  {
+    "id": "watch-founder-01-acquire",
+    "route": "/watch/founder-01/acquire",
+    "path": "C:\\_codex\\projects\\_libs\\react-site-wall\\.creative\\sitewall\\captures\\session1\\watch-founder-01-acquire.png",
+    "viewport": {
+      "width": 393,
+      "height": 659
+    },
+    "image": {
+      "width": 387,
+      "height": 2557
+    },
+    "excludedScrollbarWidth": 6,
+    "scrollBefore": {
+      "x": 0,
+      "y": 0,
+      "height": 2557
+    },
+    "scrollAfter": {
+      "x": 0,
+      "y": 0,
+      "height": 2557
+    },
+    "segments": [
+      {
+        "scroller": "document",
+        "offset": 0,
+        "actual": 0,
+        "fullHeight": 2557,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 659,
+        "actual": 659,
+        "fullHeight": 2557,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 1318,
+        "actual": 1318,
+        "fullHeight": 2557,
+        "viewportHeight": 659,
+        "width": 387
+      },
+      {
+        "scroller": "document",
+        "offset": 1977,
+        "actual": 1898,
+        "fullHeight": 2557,
+        "viewportHeight": 659,
+        "width": 387
+      }
+    ],
+    "visualVerification": {
+      "inspected": true,
+      "rightEdge": "No white scrollbar stripe; 6px gutter excluded without viewport reflow.",
+      "topBar": "Appears once.",
+      "imageFit": "Cover cropping and positioning retained.",
+      "joins": "Sequential content without overlapping menu bars."
+    },
+    "finalSliceHeight": 580
+  }
+]
