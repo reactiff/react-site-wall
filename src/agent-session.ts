@@ -1,4 +1,4 @@
-import type { AgentAPI, AgentCard, AgentOwnerInput, AgentResponse, AgentSnapshot, ContextSelection } from './types.js';
+import type { AgentAPI, AgentCard, AgentOwnerInput, AgentPromptRequest, AgentResponse, AgentSnapshot, ContextSelection } from './types.js';
 
 const types = new Set(['clarification', 'proposal', 'variants', 'implementation-approval', 'review', 'owner-turn']);
 const actions: Record<AgentCard['type'], AgentResponse['action'][]> = {
@@ -16,16 +16,18 @@ export class AgentSession implements AgentAPI {
   constructor(private emit: (type: string, detail: unknown) => void, private reference?: () => ContextSelection | null) {}
   snapshot = (): AgentSnapshot => structuredClone({ ...this.data, status: this.data.interactions.some(item => item.state === 'waiting') ? 'Waiting for you' : this.data.status });
   private notify(type: string, detail: unknown) { this.emit(`agent-${type}`, structuredClone(detail)); }
-  private input(instruction?: string, response?: AgentResponse): AgentOwnerInput {
+  private input(instruction?: string, response?: AgentResponse, request?: AgentPromptRequest): AgentOwnerInput {
     if (this.data.inputs.filter(item => item.state !== 'acknowledged').length >= 100) throw new Error('Owner input queue is full');
     const item: AgentOwnerInput = { id: crypto.randomUUID(), sequence: ++this.sequence, time: Date.now(), instruction, response, state: 'queued' };
     const reference = instruction ? this.reference?.() : null;
     if (reference) item.reference = structuredClone(reference);
+    if (request?.references?.length) item.references = structuredClone(request.references);
+    if (request?.tags?.length) item.tags = [...request.tags];
     this.data.inputs.push(item); this.notify('input', item); return structuredClone(item);
   }
-  enqueue = (instruction: string) => {
+  enqueue = (instruction: string, request?: AgentPromptRequest) => {
     if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > 16000) throw new Error('Instruction must contain 1–16000 characters');
-    return this.input(instruction);
+    return this.input(instruction, undefined, request);
   };
   takeOwnerInput = () => {
     const items = this.data.inputs.filter(item => item.state !== 'acknowledged');

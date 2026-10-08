@@ -82,9 +82,10 @@ export interface SiteWallAPI {
   clearSelection(): void;
   inspectSelection(): ContextSelection | null;
   promptContext(): Promise<PromptContext>;
-  executePrompt(instruction: string): Promise<PromptResult>;
+  executePrompt(instruction: string, request?: AgentPromptRequest): Promise<PromptResult>;
   stopPrompt(): Promise<void>;
   agent: AgentAPI;
+  references: ReferencesAPI;
   inspect(id?: string): Promise<PageObservation>;
   click(selector: string): Promise<void>;
   type(selector: string, value: string): Promise<void>;
@@ -114,6 +115,30 @@ export interface PromptContext {
   styles: import('./style-context.js').StyleContext;
 }
 export interface PromptResult { status: 'completed' | 'failed'; output: string; exitCode: number | null }
+export interface ReferenceAsset {
+  id: string; name: string; alias?: string; kind: 'image' | 'file' | 'area';
+  mimeType: string; size: number; createdAt: number;
+  /** Session-local bytes, never written through SiteWall's general persistence. */
+  dataUrl: string;
+  context?: ContextSelection;
+}
+export type ReferenceMetadata = Omit<ReferenceAsset, 'dataUrl'>;
+export interface ReferencesSnapshot { assets: ReferenceAsset[]; selected: string[]; pending?: number }
+export interface ReferencesAPI {
+  snapshot(): ReferencesSnapshot;
+  subscribe(listener: () => void): () => void;
+  addFile(file: File): Promise<ReferenceAsset>;
+  captureArea(rectangle: SelectionRectangle, id?: string): Promise<ReferenceAsset>;
+  list(): ReferenceMetadata[];
+  read(id: string): ReferenceAsset;
+  select(id: string, selected: boolean): void;
+  forPrompt(instruction?: string): ReferenceAsset[];
+  clearSelection(ids?: string[]): void;
+  remove(id: string): void;
+  clear(): void;
+  whenReady(): Promise<void>;
+}
+export interface AgentPromptRequest { references?: ReferenceAsset[]; tags?: string[] }
 export interface AgentArtifact { title: string; url: string; kind: 'image' | 'preview' | 'artifact' }
 export interface AgentChoice { id: string; title: string; description?: string; differentiators?: string[]; artifacts?: AgentArtifact[] }
 export interface AgentCard {
@@ -135,12 +160,12 @@ export interface AgentCard {
   metadata?: Record<string, unknown>;
 }
 export interface AgentResponse { cardId: string; action: 'answer' | 'approve' | 'reject' | 'revise' | 'select' | 'implement' | 'accept' | 'revert' | 'pass'; selected?: string[]; text?: string }
-export interface AgentOwnerInput { id: string; sequence: number; time: number; instruction?: string; reference?: ContextSelection; response?: AgentResponse; state: 'queued' | 'delivered' | 'acknowledged'; acknowledgement?: string }
+export interface AgentOwnerInput { id: string; sequence: number; time: number; instruction?: string; reference?: ContextSelection; references?: ReferenceAsset[]; tags?: string[]; response?: AgentResponse; state: 'queued' | 'delivered' | 'acknowledged'; acknowledgement?: string }
 export interface AgentInteraction { card: AgentCard; time: number; state: 'waiting' | 'submitted' | 'completed' | 'failed'; response?: AgentResponse; result?: string }
 export interface AgentSnapshot { inputs: AgentOwnerInput[]; interactions: AgentInteraction[]; status: string }
 export interface AgentAPI {
   snapshot(): AgentSnapshot;
-  enqueue(instruction: string): AgentOwnerInput;
+  enqueue(instruction: string, request?: AgentPromptRequest): AgentOwnerInput;
   /** Call only at a safe execution boundary. Unacknowledged deliveries remain available. */
   takeOwnerInput(): AgentOwnerInput[];
   acknowledge(id: string, message?: string): void;
@@ -154,7 +179,7 @@ export interface PageCapture { id: string; route: string; image: string }
 export interface SavedPageCapture { id: string; route: string; path: string }
 export interface CapturePersistenceAdapter { saveCaptures(outputDir: string, captures: PageCapture[]): Promise<SavedPageCapture[]> }
 export interface PromptAdapter extends Partial<CapturePersistenceAdapter> {
-  execute(instruction: string, context: PromptContext, options?: { signal?: AbortSignal }): Promise<PromptResult>;
+  execute(instruction: string, context: PromptContext, options?: AgentPromptRequest & { signal?: AbortSignal }): Promise<PromptResult>;
   cancel?(): Promise<void>;
   /** Connect an authenticated agent transport to this exact human session. */
   attach?(api: SiteWallAPI): () => void;

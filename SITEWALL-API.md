@@ -12,7 +12,7 @@ For Codex launched through SiteWall, POST to `SITEWALL_ORIGIN + '/__sitewall/ses
 { "sessionId": "<SITEWALL_SESSION_ID>", "method": "inspect", "args": [] }
 ```
 
-Set `Content-Type: application/json` and `X-SiteWall-Token` from environment `SITEWALL_RELAY_CREDENTIAL` (fallback `SITEWALL_TOKEN`). Read credentials in code; never print or persist them. Response: `{ "result": ... }`; errors remain unresolved. All methods below support relay access except `subscribe` and `executePrompt`. Nested methods use `styles.list`, `styles.read`, `styles.save`, and the documented `agent.*` relay methods. Environment credentials are supplied only to SiteWall-launched Codex processes.
+Set `Content-Type: application/json` and `X-SiteWall-Token` from environment `SITEWALL_RELAY_CREDENTIAL` (fallback `SITEWALL_TOKEN`). Read credentials in code; never print or persist them. Response: `{ "result": ... }`; errors remain unresolved. Relay access is limited to the explicitly supported methods below; browser-only methods are marked. Nested methods use `styles.list`, `styles.read`, `styles.save`, the documented `agent.*` methods, and `references.list`, `references.read`, `references.captureArea`. Environment credentials are supplied only to SiteWall-launched Codex processes.
 
 ## Methods
 
@@ -47,7 +47,7 @@ Set `Content-Type: application/json` and `X-SiteWall-Token` from environment `SI
 | `inspectSelection()` | `ContextSelection` or null. |
 | `clearSelection()` | Clear visible/captured selection; retains active element picking mode. |
 | `promptContext()` | Promise of complete `PromptContext` for current selection/focus. |
-| `executePrompt(instruction: string)` | Browser only; Promise of `{status: 'completed' \| 'failed', output: string, exitCode: number \| null}`. Runs Codex against host project with captured context; requires development prompt adapter. Nonblank instruction, max 20,000 characters. |
+| `executePrompt(instruction: string, request?: AgentPromptRequest)` | Browser only; Promise of `{status: 'completed' \| 'failed', output: string, exitCode: number \| null}`. Runs Codex against host project with captured context; requires development prompt adapter. Nonblank instruction, max 20,000 characters. |
 | `stopPrompt()` | Promise; abort current context/request and interrupt the running Codex process through the authenticated development endpoint. Custom prompt adapters/executors must support cancellation via cancel/AbortSignal. |
 
 ## Configuration
@@ -105,7 +105,7 @@ Agent panel conversation/input/activity, queued owner input, cards, and active r
 | Method | Behavior |
 | --- | --- |
 | `snapshot()` | Current inputs, interactions, and status. Metadata is agent context, not owner UI. |
-| `enqueue(instruction)` | Browser only. Enqueue owner input in arrival order; returns its id/sequence and captures the current selection as optional `reference`. |
+| `enqueue(instruction, request?)` | Browser only. Enqueue owner input in arrival order; returns its id/sequence and captures the current selection as optional `reference`. |
 | `takeOwnerInput()` | Relay. Retrieve queued and delivered-but-unacknowledged inputs at a safe boundary, marking them delivered. |
 | `acknowledge(id, message?)` | Relay. Mark a delivered input incorporated; optional acknowledgement appears in history. |
 | `requestInteraction(card)` | Relay. Present an owner card and show Waiting for you. Returns immediately; does not block browser polling. |
@@ -130,3 +130,34 @@ Cards have `{id, type, title, summary}`. Types: `clarification`, `proposal`, `va
 Responses have `{cardId, action, selected?, text?}`. Actions are `answer`, `approve`, `reject`, `revise`, `select`, `implement`, `accept`, `revert`, `pass`. Revise requires text. Reject on implementation approval requires an answer to ?What should happen next??. Variant selection respects the cardinality and OK sends IDs. Review Accept requests merging the associated branch into master; Revert requests undoing the associated implementation. The agent owns both operations and reports success/failure with `reportInteraction`; sending an intent never claims that Git succeeded.
 
 The server supplies generic interaction guidance on every invocation, including hosts with older project-local guidance. Protocol adapters use this contract to request owner decisions without exposing folders, proposal paths, or protocol commands.
+
+
+## Session References
+
+`api.references` owns browser-memory assets independently of the Agent conversation. Assets survive prompt sends and New Session, and disappear on reload or workspace unmount. Only panel width is saved as a layout setting. Reference contents and selections never use the general wall persistence layer or the host source tree.
+
+| Method | Behavior |
+| --- | --- |
+| `snapshot()` | `{assets, selected, pending?}`; selected is a list of session-local asset IDs; pending is present while assets load. |
+| `subscribe(listener)` | Browser only; subscribe to reference/selection changes, returning unsubscribe. |
+| `addFile(file: File)` | Browser only; import a file and select it. Decodable raster images normalize to PNG; other files remain bytes with their MIME type. |
+| `captureArea(rectangle, panelId?)` | Browser/relay; capture a page region in CSS coordinates as a selected PNG asset with its region context. Defaults to the focused page. |
+| `list()` | Relay; return asset metadata without file bytes. |
+| `read(id)` | Relay; retrieve an asset. During execution the relay stages it as a temporary file and returns metadata plus `path`; direct browser use returns `dataUrl`. |
+| `select(id, selected)` | Browser only; change selection without removing an asset. |
+| `forPrompt(instruction?)` | Browser only; snapshot selected assets and any saved area aliases explicitly mentioned in the instruction. |
+| `clearSelection(ids?)` | Browser only; unselect the given IDs or all assets. |
+| `remove(id)` / `clear()` | Browser only; explicitly remove one/all assets. |
+| `whenReady()` | Browser only; wait for in-flight imports/captures. The composer waits before capturing attachments for a submitted prompt. |
+
+`selectRegion(rectangle, panelId?)` keeps its existing context return shape and now also saves the captured region as a reference. Region-picking mode stays active for repeated captures until toggled off or Escape is used. Areas can come from different rendered route panels. Each gets a stable ID, friendly name `Area 1`, alias `Area1`, PNG bytes, creation time, and `context` containing route, panel ID, viewport, rectangle, scroll position, relevant elements and available shared application state. Aliases are not reused after removal/clear within the workspace. Prompts can naturally mention `@Area1`, `@Area2`, etc.; explicit alias mentions include those assets even if their checkboxes are unselected.
+
+`ReferenceAsset` is `{id, name, alias?, kind: 'image'|'file'|'area', mimeType, size, createdAt, dataUrl, context?}`. `AgentPromptRequest` is `{references?: ReferenceAsset[], tags?: string[]}`. `executePrompt` snapshots selected references by default, or accepts explicit references. It clears only the selections included in that request, retaining assets and current page/element context. Generic protocol tags travel alongside the instruction and context. The composer keeps its existing protocol prefixes.
+
+Queued interjections snapshot references and tags when submitted; later unselection/removal does not alter an already queued input. Sending an off command for a mode does not consume reference selections. New Session clears reference selections but retains assets and page/element context.
+
+The default prompt client sends references/tags separately from page context. The server stages selected bytes under an invocation-local OS temporary directory, attaches image/area files using Codex `--image`, and supplies ordinary-file paths plus metadata to the executor. Queued images/files retrieved at safe boundaries are staged in the same temporary workspace. Raw base64 is not inserted into the textual agent prompt. The workspace is removed after completion, failure, or cancellation; assets remain in browser memory for reuse. Credentials/origin/session checks are unchanged.
+
+Custom `PromptAdapter.execute` implementations receive `{signal, references, tags}` as their third argument. Custom server executors receive an optional fourth argument `{references: PreparedReference[], tags}`, where prepared references have metadata plus `path` and no `dataUrl`; paths are valid during that invocation. Handle selected attachments explicitly when supplying custom transports.
+
+Initial bounds are 50 assets, 20 MiB per asset and 32 MiB total file bytes. Images must be decodable by the browser and fit within 32 million pixels. The references payload can use up to 64 MiB of JSON wire data; the existing 1 MiB limit on page context remains unchanged. Reference file contents are application data, not protocol instructions.

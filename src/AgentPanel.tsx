@@ -6,6 +6,7 @@ import { StreamLanguage, syntaxHighlighting } from '@codemirror/language';
 import { darkHighlightStyle } from './editor-theme.js';
 import type { SiteWallAPI, PromptResult } from './types.js';
 import { AgentInteractionDialog } from './AgentInteractionDialog.js';
+import { importReferenceFiles, useReferences } from './ReferencesPanel.js';
 
 // Lightweight PowerShell tokens for command/tool output, without another dependency.
 const powershell = StreamLanguage.define({
@@ -63,13 +64,19 @@ function outputParts(text: string): { text: string; command: boolean }[] {
   return parts.filter(part => part.text);
 }
 
-function PromptEditor({ send }: { send: (text: string) => Promise<void> }) {
+function PromptEditor({ send, addFiles }: { send: (text: string) => Promise<void>; addFiles: (files: File[]) => void }) {
   const host = useRef<HTMLDivElement>(null);
   const submit = useRef(send); submit.current = send;
+  const attachments = useRef(addFiles); attachments.current = addFiles;
   useEffect(() => {
     let alive = true;
     const view = new EditorView({ parent: host.current!, state: EditorState.create({ extensions: [
       history(), editorTheme, EditorView.lineWrapping,
+      EditorView.domEventHandlers({
+        paste: event => { const files = [...event.clipboardData?.files ?? []]; if (!files.length) return false; event.preventDefault(); event.stopPropagation(); attachments.current(files); return true; },
+        dragover: event => { if (!event.dataTransfer?.types.includes('Files')) return false; event.preventDefault(); return true; },
+        drop: event => { const files = [...event.dataTransfer?.files ?? []]; if (!files.length) return false; event.preventDefault(); event.stopPropagation(); attachments.current(files); return true; },
+      }),
       placeholder('Ask Agent about this page or selection...'),
       EditorView.contentAttributes.of({ 'aria-label': 'Instruction for Agent', 'aria-multiline': 'true' }),
       Prec.highest(keymap.of([
@@ -94,13 +101,15 @@ function PromptEditor({ send }: { send: (text: string) => Promise<void> }) {
       view.scrollDOM.style.maxHeight = `${height}px`;
       view.requestMeasure();
     };
-    const observer = new ResizeObserver(measure); observer.observe(panel); measure();
+    const observer = new ResizeObserver(measure); observer.observe(panel);
+    const chips = panel.querySelector<HTMLElement>('.sw-agent-chips'); if (chips) observer.observe(chips);
+    measure();
     return () => { alive = false; observer.disconnect(); view.destroy(); };
   }, []);
   return <div className="sw-agent-prompt" ref={host} />;
 }
 
-type Entry = { id: number; role: 'You' | 'Agent' | 'Status'; text: string; time: number };
+type Entry = { id: number; role: 'You' | 'Agent' | 'Status'; text: string; time: number; references?: { id: string; name: string }[] };
 type Activity = 'idle' | 'working' | 'completed' | 'problem';
 export function AgentPanel({ api, width, open }: { api: SiteWallAPI; width: number; open: boolean }) {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -112,6 +121,7 @@ export function AgentPanel({ api, width, open }: { api: SiteWallAPI; width: numb
   const modeRef = useRef(mode);
   const [agent, setAgent] = useState(() => api.agent.snapshot());
   const [shownCard, setShownCard] = useState<string>();
+  const references = useReferences(api);
   const output = useRef<HTMLDivElement>(null);
   const follow = useRef(true), running = useRef(false), acceptResults = useRef(false), counter = useRef(0);
   const completion = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -119,7 +129,7 @@ export function AgentPanel({ api, width, open }: { api: SiteWallAPI; width: numb
   const continuationSequence = useRef(0);
   const continueInput = useRef(true);
   const internalPrompt = useRef(false);
-  const append = (role: Entry['role'], text: string) => setEntries(previous => [...previous, { id: ++counter.current, role, text, time: Date.now() }]);
+  const append = (role: Entry['role'], text: string, references?: Entry['references']) => setEntries(previous => [...previous, { id: ++counter.current, role, text, references, time: Date.now() }]);
   useEffect(() => api.subscribe(event => {
     if (event.type.startsWith('agent-')) {
       setAgent(api.agent.snapshot());
@@ -127,7 +137,7 @@ export function AgentPanel({ api, width, open }: { api: SiteWallAPI; width: numb
     }
     if (event.type === 'prompt-begin') {
       clearTimeout(completion.current); acceptResults.current = true; running.current = true; setBusy(true); setActivity('working');
-      if (!internalPrompt.current) append('You', (event.detail as { instruction: string }).instruction);
+      if (!internalPrompt.current) { const detail = event.detail as { instruction: string; references?: Entry['references'] }; append('You', detail.instruction, detail.references); }
     } else if (acceptResults.current && event.type === 'prompt-result') {
       const result = event.detail as PromptResult;
       append('Agent', result.output || '(No output)'); running.current = false; setBusy(false);
@@ -158,19 +168,24 @@ export function AgentPanel({ api, width, open }: { api: SiteWallAPI; width: numb
     setEntries([]); setVersion(value => value + 1); setActivity('idle'); setResetting(true);
     try { if (running.current) await stop(); }
     catch { /* Cancellation error is shown; retain its warning instead of claiming success. */ }
-    finally { api.agent.reset(); api.clearSelection(); modeRef.current = null; setMode(null); running.current = false; setBusy(false); setResetting(false); }
+    finally { api.agent.reset(); api.references.clearSelection(); modeRef.current = null; setMode(null); running.current = false; setBusy(false); setResetting(false); }
   };
-  const send = async (text: string, internal = false) => {
+  const send = async (text: string, internal = false, useReferences = true) => {
     if (internal && modeRef.current) text = `.${modeRef.current} ${text}`;
     if (resetting) throw new Error('Session is resetting');
     if (text.length > 16000) { setActivity('problem'); append('Status', 'Instruction must be at most 16000 characters'); throw new Error('Instruction must be at most 16000 characters'); }
-    if (running.current) { api.agent.enqueue(text); return; }
+    const request = { references: internal || !useReferences ? [] : api.references.forPrompt(text), tags: (useReferences || internal) && modeRef.current ? [modeRef.current] : [] };
+    if (running.current) {
+      api.agent.enqueue(text, request);
+      api.references.clearSelection(request.references.map(asset => asset.id));
+      return;
+    }
     continueInput.current = true;
     internalPrompt.current = internal;
     if (internal) continuationSequence.current = api.agent.snapshot().inputs.filter(item => item.state === 'queued').at(-1)?.sequence ?? continuationSequence.current;
     const own = epoch.current;
     running.current = true; setBusy(true); setActivity('working');
-    try { await api.executePrompt(text); }
+    try { await api.executePrompt(text, request); }
     catch (error) {
       if (own === epoch.current && running.current) { append('Status', String(error)); setActivity('problem'); }
       throw error;
@@ -193,13 +208,13 @@ export function AgentPanel({ api, width, open }: { api: SiteWallAPI; width: numb
   const waiting = agent.interactions.find(item => item.state === 'waiting');
   const waitingId = waiting?.card.id;
   useEffect(() => { setShownCard(waitingId); }, [waitingId]);
-  const status = waiting ? 'Waiting for you' : busy ? agent.status === 'Idle' ? 'Working' : agent.status : activity === 'completed' ? 'Completed' : activity === 'problem' ? 'Problem' : 'Idle';
+  const status = waiting ? 'Waiting for you' : busy ? agent.status === 'Idle' ? 'Working' : agent.status : references.pending ? 'Loading references' : activity === 'completed' ? 'Completed' : activity === 'problem' ? 'Problem' : 'Idle';
   const toggle = async (next: 'creative' | 'express') => {
     const previous = modeRef.current;
     modeRef.current = previous === next ? null : next;
     setMode(modeRef.current);
     try {
-      if (previous) await send(`.${previous} off`);
+      if (previous) await send(`.${previous} off`, false, false);
     } catch (error) { append('Status', String(error)); }
   };
   const context = state.selection ? `${state.selection.kind}: ${state.selection.route}` : `Page: ${state.currentRoute || 'none'}`;
@@ -216,10 +231,12 @@ export function AgentPanel({ api, width, open }: { api: SiteWallAPI; width: numb
     }}>{[...entries.map(entry => ({ time: entry.time, node: <div className="sw-agent-entry" data-role={entry.role} key={entry.id}>
       <div className="sw-agent-entry-label">{entry.role}</div>
       {outputParts(entry.text).map((part, index) => <OutputEditor key={index} {...part} />)}
+      {entry.references?.length ? <div className="sw-agent-reference-history">{entry.references.map(asset => <span key={asset.id}>{asset.name}</span>)}</div> : null}
     </div> })),
       ...agent.inputs.filter(item => item.instruction).map(item => ({ time: item.time, node: <div className="sw-agent-entry sw-agent-owner-input" key={item.id}>
         <div className="sw-agent-entry-label">You · {item.state === 'queued' ? 'Queued' : item.state === 'delivered' ? 'Delivered at boundary' : 'Incorporated'}</div>
         <OutputEditor text={item.instruction!} command={false} />
+        {item.references?.length ? <div className="sw-agent-reference-history">{item.references.map(asset => <span key={asset.id}>{asset.name}</span>)}</div> : null}
         {item.acknowledgement && <p>{item.acknowledgement}</p>}
       </div> })),
       ...agent.interactions.map(item => ({ time: item.time, node: <div className="sw-agent-interaction-history" key={item.card.id}>
@@ -230,9 +247,11 @@ export function AgentPanel({ api, width, open }: { api: SiteWallAPI; width: numb
         {item.result && <p>{item.result}</p>}
       </div> }))].sort((a, b) => a.time - b.time).map(item => item.node)}
     </div>
-    <PromptEditor key={version} send={text => send(mode ? `.${mode} ${text}` : text)} />
+    <PromptEditor key={version} send={async text => { const own = epoch.current; await api.references.whenReady(); if (own !== epoch.current) throw new DOMException('Session changed', 'AbortError'); await send(modeRef.current ? `.${modeRef.current} ${text}` : text); }} addFiles={files => { void importReferenceFiles(api, files, message => { if (message) append('Status', message); }); }} />
     <div className="sw-agent-chips" aria-label="Agent modes">
       {(['creative', 'express'] as const).map(value => <button key={value} aria-pressed={mode === value} disabled={resetting} onClick={() => void toggle(value)}>{value === 'creative' ? 'Creative' : 'Express'}</button>)}
+      <span className="sw-agent-route-chip" title={context}>{state.selection?.route || state.currentRoute || 'No page'}</span>
+      {references.assets.filter(asset => references.selected.includes(asset.id)).map(asset => <span className="sw-agent-reference-chip" key={asset.id} title={asset.alias ? `@${asset.alias}` : asset.name}>{asset.name}<button aria-label={`Unselect ${asset.name}`} onClick={() => api.references.select(asset.id, false)}>×</button></span>)}
     </div>
     </aside>
     {waiting && <AgentInteractionDialog key={waiting.card.id} interaction={waiting} visible={shownCard === waiting.card.id} dismiss={() => setShownCard(undefined)} respond={response => { api.agent.respond(response); if (!running.current) void send('Owner interaction response is ready. Retrieve agent.takeOwnerInput() and handle the structured intent, then acknowledge and report its result.', true).catch(() => {}); }} />}

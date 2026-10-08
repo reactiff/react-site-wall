@@ -1,7 +1,8 @@
 import { AgentSession } from './agent-session.js';
+import { ReferenceStore } from './references.js';
 import { readPersistent, writePersistent } from './persistence.js';
 import { getPageBridge, type PageBridge } from './bridge.js';
-import { capturePage, stitchPageSlices } from './capture.js';
+import { capturePage, captureRegion, stitchPageSlices } from './capture.js';
 import { waitForPageReady } from './page-ready.js';
 import { WallController } from './controller.js';
 import type { ContextSelection, PromptAdapter, PromptContext, SelectionRectangle, SiteWallAPI, StylesheetAdapter, WallEvent } from './types.js';
@@ -42,7 +43,22 @@ export class WallRuntime {
       try { const result = await fn(); controller.emit('action', { name, success: true }); return result; }
       catch (error) { controller.emit('error', { action: name, message: String(error) }); throw error; }
     };
+    const references = new ReferenceStore((rectangle, id) => {
+      const panelId = id ?? this.focused();
+      const work = this.captureQueue.then(async () => {
+        await this.ready(panelId);
+        if (rectangle.width * rectangle.height > 32 * 1024 * 1024) throw new Error('Selected area is too large to capture');
+        const context = this.select(panelId, rectangle);
+        const win = this.frames.get(panelId)!.contentWindow!;
+        const image = await captureRegion(win, rectangle, this.captureAbort.signal);
+        if (getPageBridge(win).location() !== context.route) throw new Error('The selected route changed during capture');
+        return { context, image };
+      });
+      this.captureQueue = work.catch(() => {});
+      return work;
+    });
     this.api = {
+      references,
       agent: new AgentSession((type, detail) => controller.emit(type, detail), () => controller.snapshot().selection),
       getState: () => structuredClone(controller.snapshot()),
       events: controller.events,
@@ -93,24 +109,25 @@ export class WallRuntime {
         return this.select(panelId, elements[0]);
       }),
       selectRegion: (rectangle, id) => action('selectRegion', async () => {
-        const panelId = id ?? this.focused();
-        await this.ready(panelId);
-        return this.select(panelId, rectangle);
+        return (await references.captureArea(rectangle, id)).context!;
       }),
       clearSelection: () => controller.update({ selection: null, selectionMode: controller.snapshot().selectionMode === 'element' ? 'element' : 'none' }),
       inspectSelection: () => structuredClone(controller.snapshot().selection),
       promptContext: () => action('promptContext', () => this.promptContext()),
-      executePrompt: instruction => action('executePrompt', async () => {
+      executePrompt: (instruction, request) => action('executePrompt', async () => {
         if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > 20000) throw new Error('Enter an instruction of at most 20000 characters');
         if (!this.prompts) throw new Error('No development Codex prompt adapter configured');
         if (this.promptOperation) throw new Error('A Codex request is already running');
+        const attachments = structuredClone(request?.references ?? references.forPrompt(instruction));
+        const tags = request?.tags ? [...request.tags] : undefined;
         const operation = new AbortController(); this.promptOperation = operation;
-        controller.emit('prompt-begin', { instruction });
+        controller.emit('prompt-begin', { instruction, references: attachments.map(({ dataUrl: _bytes, ...metadata }) => metadata), tags });
+        references.clearSelection(attachments.map(asset => asset.id));
         try {
           const context = await promptWait(this.promptContext(), operation.signal);
           operation.signal.throwIfAborted();
           controller.emit('prompt-start', { panelId: context.selection?.panelId ?? context.wall.focused });
-          const result = await promptWait(this.prompts.execute(instruction, context, { signal: operation.signal }), operation.signal);
+          const result = await promptWait(this.prompts.execute(instruction, context, { signal: operation.signal, references: attachments, tags }), operation.signal);
           operation.signal.throwIfAborted();
           controller.emit('prompt-result', result);
           return result;
@@ -201,7 +218,7 @@ export class WallRuntime {
     if (this.blocked.has(panelId) || getPageBridge(win).location().split('#')[0] !== this.controller.route(panelId).path.split('#')[0]) throw new Error('Cannot select an unavailable assigned page');
     const selection = captureSelection(win, panelId, getPageBridge(win).shared?.read() ?? this.shared, target);
     const state = this.controller.snapshot();
-    this.controller.update({ selection, selectionMode: selection.kind === 'element' && state.selectionMode === 'element' ? 'element' : 'none', layout: 'viewport', visible: state.visible.includes(panelId) ? state.visible : [...state.visible, panelId] });
+    this.controller.update({ selection, selectionMode: state.selectionMode === selection.kind ? state.selectionMode : 'none', layout: 'viewport', visible: state.visible.includes(panelId) ? state.visible : [...state.visible, panelId] });
     this.controller.emit('selection', selection);
     return structuredClone(selection);
   }
@@ -367,6 +384,7 @@ export class WallRuntime {
       this.closed = true;
       history();
       this.api.agent.reset();
+      this.api.references.clear();
       detachPrompts?.();
       this.captureAbort.abort();
       window.removeEventListener('sitewall:page', page);

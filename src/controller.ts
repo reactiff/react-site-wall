@@ -2,7 +2,7 @@ import { readPersistent, writePersistent } from './persistence.js';
 import { normalizePath, validateManifest } from './manifest.js';
 import { devices, type RouteManifest, type WallEvent, type WallState } from './types.js';
 
-const persistentEvent = (event: WallEvent) => !event.type.startsWith('prompt-') && !event.type.startsWith('agent-') && event.type !== 'selection' &&
+const persistentEvent = (event: WallEvent) => !event.type.startsWith('prompt-') && !event.type.startsWith('agent-') && !event.type.startsWith('reference-') && event.type !== 'selection' &&
   !['executePrompt', 'stopPrompt'].includes(String((event.detail as { action?: string; name?: string } | null)?.action ?? (event.detail as { name?: string } | null)?.name ?? ''));
 const persistedEvent = (event: WallEvent): WallEvent => event.type === 'workspace'
   ? { ...event, detail: { ...(event.detail as WallState), selection: null } } : event;

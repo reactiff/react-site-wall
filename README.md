@@ -233,3 +233,14 @@ Agent interactions and captures wait for document load, pending iframe fetch/XHR
 Wheel zoom advances by one percentage point per standard wheel notch, smoothly anchored to the pointer. Ctrl/Command + wheel zooms over a live page; ordinary wheel scrolling stays with that page. Background wheel zoom also works. Shift-drag pans across the wall and live panels; grab/grabbing and zoom-in/zoom-out cursors indicate the gesture. Camera previews paint once per animation frame and commit the shared state at gesture completion. Selection picking is transparent and uses the standard arrow.
 
 Workspace settings, route visibility/focus, camera, selection, filters, prompt UI/drafts, CSS drafts, histories, shared adapter state and per-panel scroll positions persist locally per wall path. Credentials are redacted; live host credentials are preserved during shared-state restoration. Opaque host component state remains under the host's own persistence. The styles panel has a draggable/keyboard-accessible left edge; its width also persists and is available as `configure({ stylesWidth })`. Editors format rule display without rewriting source merely on inspection, wrap long declarations, and grow to fit their content; the panel owns scrolling.
+
+
+## References
+
+Open **References** beside the Agent panel. Paste images into References or the prompt editor, drop image/ordinary files, or use **Add files**. The panel resizes and collapses like the other sidebars. New assets are selected; checkboxes and removable composer chips choose what accompanies the next prompt. Remove an asset or use **Clear References** to discard it explicitly.
+
+**Capture areas** lets you draw several regions across rendered route panels. Each saved area includes a cropped PNG and its route, viewport, rectangle, and region context. Use ordinary requests such as ?Compare @Area1 and @Area2 with this image.? Turn capture mode off or press Escape to resume normal page interaction.
+
+Sending clears the prompt and selected-reference chips while retaining assets and normal page/element context. Additional prompts while working carry their own reference snapshots through the owner-input queue. New Session retains References assets and clears selections; reload starts an empty working-session library. Panel width and other wall settings retain normal persistence.
+
+The default transport attaches images to Codex and exposes other selected files from temporary execution storage outside the host repository. No screenshot directories or copied project assets are required. See [Session References API](./SITEWALL-API.md#session-references) for metadata, transport integration and limits.

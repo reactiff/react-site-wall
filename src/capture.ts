@@ -1,4 +1,19 @@
 import { waitForPageReady } from './page-ready.js';
+import type { SelectionRectangle } from './types.js';
+
+/** Capture a region in page CSS coordinates without scrolling or resizing the page. */
+export async function captureRegion(win: Window, rectangle: SelectionRectangle, signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted();
+  const module = await import('html2canvas');
+  const html2canvas = module.default as unknown as (element: HTMLElement, options: Record<string, unknown>) => Promise<HTMLCanvasElement>;
+  const canvas = await html2canvas(win.document.body, {
+    x: rectangle.x, y: rectangle.y, width: Math.ceil(rectangle.width), height: Math.ceil(rectangle.height),
+    windowWidth: win.innerWidth, windowHeight: win.innerHeight, scrollX: win.scrollX, scrollY: win.scrollY,
+    scale: 1, useCORS: true, logging: false,
+  });
+  signal?.throwIfAborted();
+  return canvas.toDataURL('image/png');
+}
 
 /** Capture exact viewport-height scroll steps without changing the CSS viewport. */
 export async function capturePage(win: Window, signal?: AbortSignal): Promise<string[]> {
